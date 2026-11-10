@@ -16,13 +16,17 @@ export class Castle {
     this.armor = 30;
     this.img = scene.add.image(x, y, 'kale').setOrigin(0.5, 0.985).setDepth(20);
     this.img.setScale(w / this.img.width);
-    if (side === 'p') {
-      this.img.setFlipX(true);
-      // Ottoman banner on our keep
-      const k = w / 512;
-      this.flag = scene.add.image(x + 140 * k, y - 532 * k, 'flag-red').setOrigin(0, 1).setScale(w / 380).setDepth(21);
-      scene.tweens.add({ targets: this.flag, scaleX: this.flag.scaleX * 0.82, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-    }
+    if (side === 'p') this.img.setFlipX(true);
+    // Team banner on the keep: red for us, blue for the enemy (flies toward the field)
+    const k = w / 512;
+    this.flag = scene.add
+      .image(x + (side === 'p' ? 140 : -140) * k, y - 532 * k, side === 'p' ? 'flag-red' : 'flag-blue')
+      .setOrigin(0, 1)
+      .setFlipX(side === 'e')
+      .setScale(w / 380)
+      .setDepth(21);
+    if (side === 'e') this.flag.setOrigin(1, 1);
+    scene.tweens.add({ targets: this.flag, scaleX: this.flag.scaleX * 0.82, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.pos = { x, y: y - 10, s: 0.62 };
     this.height = this.img.displayHeight * 0.55;
     this.bar = scene.add.graphics().setDepth(2100);

@@ -198,7 +198,9 @@ export class Battle {
       if (a.mode === 'melee' && !t.isCastle && t.alive && u.alive && !t.retaliated) {
         t.retaliated = true;
         const back = this.damage(t, u, { contact: !MELEE.includes(t.def.kind) });
-        await t.counter(u, Math.max(1, Math.round(back.dmg * 0.5)));
+        // archers, musketeers and gunners are poor at hand-to-hand: weaker strike-back
+        const k = MELEE.includes(t.def.kind) ? 0.5 : 0.3;
+        await t.counter(u, Math.max(1, Math.round(back.dmg * k)));
       }
     }
     u.setActive(false);

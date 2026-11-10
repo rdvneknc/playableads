@@ -330,31 +330,33 @@ export function makeTextures(scene) {
       ctx.fill();
     }
   });
-  canvasTex(scene, 'flag-red', 90, 140, (ctx) => {
-    ctx.fillStyle = '#4a2c12';
-    ctx.fillRect(0, 0, 5, 140);
-    ctx.fillStyle = '#d9a62e';
-    ctx.beginPath();
-    ctx.arc(2.5, 4, 5, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#c3122b';
-    ctx.beginPath();
-    ctx.moveTo(5, 10);
-    ctx.quadraticCurveTo(45, 2, 86, 14);
-    ctx.lineTo(74, 34);
-    ctx.lineTo(86, 54);
-    ctx.quadraticCurveTo(45, 44, 5, 56);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(38, 33, 12, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#c3122b';
-    ctx.beginPath();
-    ctx.arc(43, 32, 10, 0, TAU);
-    ctx.fill();
-  });
+  // Plain team banners (red = us, blue = enemy)
+  [['flag-red', '#c3122b', '#8a0c1d'], ['flag-blue', '#2a5db0', '#183c78']].forEach(([key, c1, c2]) =>
+    canvasTex(scene, key, 90, 140, (ctx) => {
+      ctx.fillStyle = '#4a2c12';
+      ctx.fillRect(0, 0, 5, 140);
+      ctx.fillStyle = '#d9a62e';
+      ctx.beginPath();
+      ctx.arc(2.5, 4, 5, 0, TAU);
+      ctx.fill();
+      const g = ctx.createLinearGradient(5, 0, 86, 0);
+      g.addColorStop(0, c2);
+      g.addColorStop(0.3, c1);
+      g.addColorStop(1, c1);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(5, 10);
+      ctx.quadraticCurveTo(45, 2, 86, 14);
+      ctx.lineTo(74, 34);
+      ctx.lineTo(86, 54);
+      ctx.quadraticCurveTo(45, 44, 5, 56);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#d9a62e';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }),
+  );
   canvasTex(scene, 'ball', 32, 32, (ctx) => {
     const g = ctx.createRadialGradient(12, 11, 2, 16, 16, 15);
     g.addColorStop(0, '#8a8a8a');

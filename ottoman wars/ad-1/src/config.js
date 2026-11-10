@@ -77,7 +77,7 @@ export const UNITS = {
   },
   akinci: {
     name: 'AKINCI', art: 'akinci', kind: 'cavalry', cost: 40,
-    hp: 105, atk: 38, def: 20, range: 1, move: 4, init: 9,
+    hp: 105, atk: 44, def: 20, range: 1, move: 4, init: 9,
     bonus: ['ranged', 'gun', 'cannon'], h: 222, face: 0.44,
     tip: 'Hızlı hücum, okçu ve topu ezer',
   },
