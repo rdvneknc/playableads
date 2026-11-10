@@ -169,7 +169,11 @@ export class GameScene extends Phaser.Scene {
       glow.lineStyle(5, 0xfff1a8, 1);
       glow.strokeRoundedRect(-CARD_W / 2 - 3, -frame.displayHeight / 2 - 3, CARD_W + 6, frame.displayHeight + 6, 12);
       glow.setVisible(false);
-      c.add([portrait, frame, name, coin, cost, glow]);
+      const badge = def.limit
+        ? this.add.text(CARD_W / 2 - 6, -frame.displayHeight / 2 + 8, '', { fontFamily: FONT, fontSize: `${Math.round(15 * (CARD_W / 112))}px`, color: '#ffffff', backgroundColor: '#8a1a1a', padding: { x: 4, y: 1 } }).setOrigin(1, 0)
+        : null;
+      c.add([portrait, frame, name, coin, cost, glow, ...(badge ? [badge] : [])]);
+      c.badge = badge;
       c.setSize(CARD_W, frame.displayHeight).setInteractive({ useHandCursor: true });
       c.type = type;
       c.glow = glow;
@@ -184,7 +188,10 @@ export class GameScene extends Phaser.Scene {
 
   refreshCards() {
     this.cards.forEach((c) => {
-      const ok = UNITS[c.type].cost <= this.gold;
+      const def = UNITS[c.type];
+      const used = this.countOf(c.type);
+      if (c.badge) c.badge.setText(`${used}/${def.limit}`);
+      const ok = def.cost <= this.gold && !(def.limit && used >= def.limit);
       c.setAlpha(ok ? 1 : 0.5);
       c.portrait.setTint(ok ? 0xffffff : 0x777777);
       c.glow.setVisible(this.selected === c.type);
@@ -197,6 +204,11 @@ export class GameScene extends Phaser.Scene {
     sfx.unlock();
     this.lastInputAt = this.time.now;
     this.hideHint();
+    if (this.limitReached(card.type)) {
+      this.toast(TEXT.limit(UNITS[card.type].name, UNITS[card.type].limit));
+      this.cameras.main.shake(80, 0.003);
+      return;
+    }
     if (UNITS[card.type].cost > this.gold) {
       this.toast(TEXT.noGold);
       this.cameras.main.shake(80, 0.003);
@@ -257,6 +269,10 @@ export class GameScene extends Phaser.Scene {
   tryPlace(type, t) {
     if (!BOARD.playerCols.includes(t.col) || this.unitAt(t.row, t.col)) return false;
     const def = UNITS[type];
+    if (this.limitReached(type)) {
+      this.toast(TEXT.limit(def.name, def.limit));
+      return false;
+    }
     if (def.cost > this.gold) {
       this.toast(TEXT.noGold);
       return false;
@@ -266,10 +282,19 @@ export class GameScene extends Phaser.Scene {
     u.dropIn();
     sfx.coin();
     this.setGold(this.gold - def.cost);
-    if (UNITS[type].cost > this.gold) this.selected = null;
+    if (UNITS[type].cost > this.gold || this.limitReached(type)) this.selected = null;
     this.refreshCards();
     this.redrawBoard();
     return true;
+  }
+
+  countOf(type) {
+    return this.units.filter((u) => u.side === 'p' && u.type === type).length;
+  }
+
+  limitReached(type) {
+    const lim = UNITS[type].limit;
+    return !!lim && this.countOf(type) >= lim;
   }
 
   removeUnit(u) {

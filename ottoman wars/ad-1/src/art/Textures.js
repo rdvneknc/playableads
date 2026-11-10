@@ -44,30 +44,11 @@ function alphaBox(img) {
   return { x: x0, y: y0, w: x1 - x0 + 2, h: y1 - y0 + 2 };
 }
 
-// Trimmed copy of a unit (feet at the bottom edge) + a steel-blue enemy version.
+// Trimmed copy of a unit (feet at the bottom edge). Enemies use the same art, mirrored.
 function makeUnitTextures(scene, key, face = 0.45) {
   const img = scene.textures.get(key).getSourceImage();
   const b = alphaBox(img);
   canvasTex(scene, `${key}-u`, b.w, b.h, (ctx) => ctx.drawImage(img, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h));
-  canvasTex(scene, `${key}-e`, b.w, b.h, (ctx) => {
-    ctx.drawImage(img, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
-    const id = ctx.getImageData(0, 0, b.w, b.h);
-    const d = id.data;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] === 0) continue;
-      const r = d[i];
-      const g = d[i + 1];
-      const bl = d[i + 2];
-      const lum = 0.3 * r + 0.59 * g + 0.11 * bl;
-      // warm saturated cloth → cold steel blue; skin/metal keep some of their colour
-      const sat = Math.max(r, g, bl) - Math.min(r, g, bl);
-      const k = Math.min(1, sat / 90) * 0.85;
-      d[i] = Math.min(255, r * (1 - k) + lum * 0.62 * k);
-      d[i + 1] = Math.min(255, g * (1 - k) + lum * 0.78 * k);
-      d[i + 2] = Math.min(255, bl * (1 - k) + Math.min(255, lum * 1.35 + 20) * k);
-    }
-    ctx.putImageData(id, 0, 0);
-  });
   // Card portrait: head + shoulders on a warm backdrop (fills the card frame's window)
   canvasTex(scene, `${key}-p`, 190, 190, (ctx) => {
     const g = ctx.createRadialGradient(95, 70, 10, 95, 95, 130);

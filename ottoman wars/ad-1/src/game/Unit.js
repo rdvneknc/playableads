@@ -29,7 +29,7 @@ export class Unit {
 
     this.shadow = scene.add.image(p.x, p.y, 'shadow');
     this.ring = scene.add.ellipse(p.x, p.y, 10, 10).setStrokeStyle(4, side === 'p' ? 0xd62c3a : 0x3b7be0, 0.9);
-    this.spr = scene.add.image(p.x, p.y, `${def.art}-${side === 'p' ? 'u' : 'e'}`).setOrigin(0.5, 0.97);
+    this.spr = scene.add.image(p.x, p.y, `${def.art}-u`).setOrigin(0.5, 0.97);
     this.spr.setFlipX(side === 'e');
     this.baseScale = def.h / this.spr.height;
     this.hpBar = scene.add.graphics();

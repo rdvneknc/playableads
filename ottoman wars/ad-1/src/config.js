@@ -26,6 +26,7 @@ export const TEXT = {
   round: (n) => `${n}. TUR`,
   needUnit: 'En az 1 asker yerleştir',
   noGold: 'Yeterli akçe yok',
+  limit: (name, n) => `En fazla ${n} ${name.toLowerCase('tr')} alınabilir`,
   victory: 'ZAFER!',
   defeat: 'YENİLDİN',
   victoryLine: 'Kale düştü! Asıl savaş şimdi başlıyor.',
@@ -87,7 +88,7 @@ export const UNITS = {
     tip: 'Hem koşar hem ok atar',
   },
   top: {
-    name: 'TOP', art: 'top', kind: 'cannon', cost: 50,
+    name: 'TOP', art: 'top', kind: 'cannon', cost: 65, limit: 2,
     hp: 90, atk: 58, def: 25, range: 7, minRange: 2, move: 0, init: 1, splash: 0.5, siege: 2,
     bonus: [], h: 168, face: 0.17,
     tip: 'Uzun menzil, alan hasarı, kale yıkar',
