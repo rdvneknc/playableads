@@ -166,7 +166,6 @@ export class GameScene extends Phaser.Scene {
   bindInput() {
     this.input.on('pointerdown', (p) => {
       sfx.unlock();
-      sfx.startMusic();
       this.lastInputAt = this.time.now;
       this.dragX = p.x;
       if (this.state === 'intro') this.startRun();

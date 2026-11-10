@@ -183,7 +183,6 @@ export class GameScene extends Phaser.Scene {
   cardDown(card, p) {
     if (this.state !== 'place') return;
     sfx.unlock();
-    sfx.startMusic();
     this.lastInputAt = this.time.now;
     this.hideHint();
     if (UNITS[card.type].cost > this.gold) {
@@ -320,7 +319,6 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'place') return;
     this.lastInputAt = this.time.now;
     sfx.unlock();
-    sfx.startMusic();
     if (!enabled) {
       this.toast(TEXT.needUnit);
       return;
