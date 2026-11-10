@@ -3,6 +3,7 @@ import { AD, BOARD, BUDGET, ENEMY, FONT, GAME_WIDTH as W, GAME_HEIGHT as H, L, T
 import { cell, drawBoard, pick } from '../game/Board.js';
 import { Unit, wait, tweenP } from '../game/Unit.js';
 import { Battle } from '../game/Battle.js';
+import { Castle } from '../game/Castle.js';
 import { Fx } from '../game/Fx.js';
 import { EndCard } from '../ui/EndCard.js';
 import { banner, goldText, makeButton, makeLogo } from '../ui/Ui.js';
@@ -10,7 +11,6 @@ import { sfx } from '../audio/Sfx.js';
 import { notifyGameEnd } from '../ad/cta.js';
 
 const TYPES = ['yeniceri', 'azap', 'tufekci', 'akinci', 'tatar', 'top'];
-const MAX_ROUNDS = 8;
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -45,17 +45,14 @@ export class GameScene extends Phaser.Scene {
   /* ───────────────────────── scenery ───────────────────────── */
 
   buildScenery() {
-    // Ottoman camp on the left
-    L.tents.forEach(([x, y, sc], i) => this.add.image(x, y, 'tent').setOrigin(0.5, 1).setScale(sc).setDepth(10 - i).setTint(i ? 0xe8e0d0 : 0xffffff));
-    // Enemy castle on the right (team art)
-    this.castle = this.add.image(L.castle.x, L.castle.y, 'kale').setOrigin(0.5, 0.985).setDepth(10);
-    this.castle.setScale(L.castle.w / this.castle.width);
+    // Both sides defend a castle just off the board edge
+    this.castles = { p: new Castle(this, 'p', L.castles.p), e: new Castle(this, 'e', L.castles.e) };
 
     // drifting dust motes for depth
     this.add
       .particles(0, 0, 'dot', {
         x: { min: 0, max: W },
-        y: { min: 480, max: 900 },
+        y: { min: 280, max: 640 },
         lifespan: 4000,
         speedX: { min: 6, max: 18 },
         speedY: { min: -6, max: 2 },
@@ -100,6 +97,32 @@ export class GameScene extends Phaser.Scene {
 
     this.logo = makeLogo(this, L.logo.x, L.logo.y, L.logo.s).setDepth(40);
     this.instr = goldText(this, L.instr.x, L.instr.y, TEXT.place, L.instr.size, { title: false, colors: ['#ffffff', '#fff3d2', '#f3d18a'], thick: 0.2 }).setDepth(3500);
+    this.buildInfo();
+  }
+
+  // Stat panel for the selected card (or the first card, as a teaser).
+  buildInfo() {
+    const { x, y } = L.info;
+    const c = this.add.container(x, y).setDepth(3500);
+    const g = this.add.graphics();
+    g.fillStyle(0x0c1a0e, 0.82);
+    g.fillRoundedRect(-330, -34, 660, 68, 16);
+    g.lineStyle(2, 0xe0b64e, 0.9);
+    g.strokeRoundedRect(-330, -34, 660, 68, 16);
+    this.infoName = this.add.text(-312, -16, '', { fontFamily: FONT, fontSize: '22px', color: '#ffd36b' }).setOrigin(0, 0.5);
+    this.infoTip = this.add.text(-312, 13, '', { fontFamily: FONT, fontSize: '16px', color: '#e9dcc0' }).setOrigin(0, 0.5);
+    this.infoStats = this.add.text(318, 0, '', { fontFamily: FONT, fontSize: '17px', color: '#ffffff', align: 'right', lineSpacing: 4 }).setOrigin(1, 0.5);
+    c.add([g, this.infoName, this.infoTip, this.infoStats]);
+    this.info = c;
+    this.showInfo('yeniceri');
+  }
+
+  showInfo(type) {
+    const d = UNITS[type];
+    const S = TEXT.stats;
+    this.infoName.setText(`${d.name}  ·  ${d.cost} ${TEXT.gold}`);
+    this.infoTip.setText(d.tip);
+    this.infoStats.setText(`${S.hp} ${d.hp}   ${S.atk} ${d.atk}   ${S.def} ${d.def}\n${S.range} ${d.range}   ${S.move} ${d.move}`);
   }
 
   setGold(v) {
@@ -181,6 +204,7 @@ export class GameScene extends Phaser.Scene {
     }
     sfx.click();
     this.selected = card.type;
+    this.showInfo(card.type);
     this.dragging = { type: card.type, startX: p.x, startY: p.y, moved: false };
     const def = UNITS[card.type];
     this.ghost = this.add
@@ -269,7 +293,7 @@ export class GameScene extends Phaser.Scene {
   showHint() {
     if (this.state !== 'place' || this.handTween || this.units.some((u) => u.side === 'p')) return;
     const from = { x: L.cardX[0], y: L.cardY - 20 };
-    const to = cell(1, 1);
+    const to = cell(2, 2);
     this.hand.setVisible(true).setPosition(from.x, from.y).setAlpha(1);
     this.hintText.setVisible(true).setAlpha(1);
     this.handTween = this.tweens.chain({
@@ -321,27 +345,27 @@ export class GameScene extends Phaser.Scene {
     this.hideHint();
     this.redrawBoard();
     sfx.horn();
-    this.tweens.add({ targets: [...this.cards, this.fightBtn], y: '+=320', alpha: 0, duration: 400, ease: 'Back.In' });
-    this.tweens.add({ targets: [this.instr, this.logo], alpha: 0, duration: 300 });
-    this.battle = new Battle(this, this.units);
-    this.round = 0;
+    this.tweens.add({ targets: [...this.cards, this.fightBtn], y: '+=240', alpha: 0, duration: 400, ease: 'Back.In' });
+    this.tweens.add({ targets: [this.instr, this.info], alpha: 0, duration: 300 });
+    this.battle = new Battle(this, this.units, this.castles);
+    // battles play a little faster than real time so the ad stays short
+    this.tweens.timeScale = 1.4;
+    this.time.timeScale = 1.4;
     await wait(this, 300);
     this.nextRound();
   }
 
   async nextRound() {
     if (this.state !== 'battle') return;
-    this.round += 1;
-    await banner(this, L.bannerY, TEXT.round(this.round), { color: 0xb3121f, hold: 380 });
-    await this.battle.sideTurn('p');
+    await banner(this, L.bannerY, TEXT.round(this.battle.round + 1), { color: 0xb3121f, hold: 380 });
+    await this.battle.playRound();
     if (await this.checkEnd()) return;
-    await wait(this, 150);
-    await banner(this, L.bannerY, TEXT.enemyTurn, { color: 0x2c4f8f, hold: 260 });
-    await this.battle.sideTurn('e');
-    if (await this.checkEnd()) return;
-    if (this.round >= MAX_ROUNDS) {
-      const hp = (s) => this.battle.alive(s).reduce((n, u) => n + u.hp / u.maxHp, 0);
-      this.finish(hp('p') >= hp('e'));
+    if (this.battle.round >= AD.maxRounds) {
+      // out of time: the side with more strength left (army + walls) wins
+      const power = (s) => this.battle.alive(s).reduce((n, u) => n + u.hp / u.maxHp, 0) + this.castles[s].hp / this.castles[s].maxHp;
+      const won = power('p') >= power('e');
+      if (won) await this.storm();
+      this.finish(won);
       return;
     }
     this.promptAttack();
@@ -374,33 +398,16 @@ export class GameScene extends Phaser.Scene {
     return true;
   }
 
-  // Victory: the army rushes the castle and it collapses.
+  // Victory: the army cheers and the enemy castle collapses.
   async storm() {
     const cam = this.cameras.main;
+    const c = this.castles.e;
     sfx.horn();
-    const alive = this.battle.alive('p');
-    alive.forEach((u) => this.tweens.add({ targets: u.pos, lift: 18 * u.pos.s, duration: 160, yoyo: true, repeat: 3 }));
-    cam.pan(L.pan[0], L.pan[1], 600, 'Sine.easeInOut');
-    cam.zoomTo(1.25, 600, 'Sine.easeInOut');
+    this.battle.alive('p').forEach((u) => this.tweens.add({ targets: u.pos, lift: 18 * u.pos.s, duration: 160, yoyo: true, repeat: 3 }));
+    cam.pan(c.img.x - 60, c.img.y - 80, 600, 'Sine.easeInOut');
+    cam.zoomTo(1.3, 600, 'Sine.easeInOut');
     await wait(this, 700);
-    sfx.collapse();
-    cam.shake(900, 0.012);
-    this.tweens.add({ targets: this.castle, x: this.castle.x + 6, duration: 50, yoyo: true, repeat: 8 });
-    await wait(this, 450);
-    this.castle.setTexture('kale-yikik');
-    for (let i = 0; i < 4; i++) this.time.delayedCall(i * 120, () => this.fx.dust(this.castle.x + (Math.random() - 0.5) * 160, this.castle.y - Math.random() * 120, 2.2, 12));
-    const rubble = this.add
-      .particles(this.castle.x, this.castle.y - 120, 'smoke', {
-        speed: { min: 80, max: 300 },
-        angle: { min: 200, max: 340 },
-        gravityY: 500,
-        scale: { start: 0.25, end: 0.05 },
-        tint: [0x8a867c, 0x5f5c56, 0xb9a682],
-        lifespan: 1100,
-        emitting: false,
-      })
-      .setDepth(70);
-    rubble.explode(40);
+    await c.collapse();
     await wait(this, 1100);
     cam.pan(W / 2, H / 2, 500, 'Sine.easeInOut');
     cam.zoomTo(1, 500, 'Sine.easeInOut');
@@ -410,6 +417,8 @@ export class GameScene extends Phaser.Scene {
   finish(won, idle = false) {
     if (this.state === 'end') return;
     this.state = 'end';
+    this.tweens.timeScale = 1;
+    this.time.timeScale = 1;
     this.hideHint();
     notifyGameEnd();
     if (won) sfx.win();

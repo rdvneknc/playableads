@@ -36,8 +36,8 @@ export function drawBoard(g, { highlight = null } = {}) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const q = tileQuad(r, c);
-      const mine = c <= 1;
-      const theirs = c >= cols - 2;
+      const mine = BOARD.playerCols.includes(c);
+      const theirs = BOARD.enemyCols.includes(c);
       const dark = (r + c) % 2 === 0;
       let color = dark ? 0x6b5a34 : 0x7d6a3e;
       let alpha = 0.38;
@@ -54,7 +54,7 @@ export function drawBoard(g, { highlight = null } = {}) {
       }
       g.fillStyle(color, alpha);
       g.fillPoints(q, true);
-      g.lineStyle(2, 0x1f1708, 0.35);
+      g.lineStyle(1.5, 0x1f1708, 0.3);
       g.strokePoints(q, true);
     }
   }

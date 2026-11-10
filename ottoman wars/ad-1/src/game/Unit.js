@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { UNITS, ENEMY_MULT, FONT, BOARD } from '../config.js';
+import { UNITS, ENEMY_MULT, FONT, BOARD, TEXT } from '../config.js';
 import { cell } from './Board.js';
 import { sfx } from '../audio/Sfx.js';
 
@@ -36,6 +36,31 @@ export class Unit {
     this.update(0);
   }
 
+  setActive(on) {
+    this.isActive = on;
+    if (!on && this.ring.active) this.ring.setStrokeStyle(4, this.side === 'p' ? 0xd62c3a : 0x3b7be0, 0.9);
+  }
+
+  async walk(path) {
+    for (const [r, c] of path) await this.moveTo(r, c);
+  }
+
+  tagText(tag) {
+    if (!tag) return;
+    const str = tag === 'charge' ? TEXT.charge : TEXT.crit;
+    this.scene.fx.floatText(str, this.pos.x, this.pos.y - this.height - 34 * this.pos.s, tag === 'charge' ? '#ffd36b' : '#ff9d5c', 26);
+  }
+
+  // Quick strike back after being hit in melee.
+  async counter(target, dmg) {
+    await tweenP(this.scene, { targets: this.pos, lean: 18 * this.pos.s, rot: 8, duration: 110, ease: 'Cubic.In' });
+    this.scene.fx.slash(target.pos.x, target.pos.y - target.height * 0.55, target.pos.s, this.dir);
+    sfx.clash();
+    this.scene.fx.floatText(TEXT.counter, this.pos.x, this.pos.y - this.height - 34 * this.pos.s, '#e8e0cf', 18);
+    target.hit(dmg, this.dir);
+    await tweenP(this.scene, { targets: this.pos, lean: 0, rot: 0, duration: 200, ease: 'Sine.Out' });
+  }
+
   get height() {
     return this.def.h * this.pos.s;
   }
@@ -44,7 +69,7 @@ export class Unit {
     if (!this.spr.active) return;
     this.t += dt;
     const { x, y, s, lift, rot, lean, sx, sy } = this.pos;
-    const breathe = this.alive && this.def.kind !== 'cannon' ? Math.sin(this.t * (this.def.speed > 1 ? 2.4 : 2)) * 0.012 : 0;
+    const breathe = this.alive && this.def.kind !== 'cannon' ? Math.sin(this.t * (this.def.move > 2 ? 2.4 : 2)) * 0.012 : 0;
     const sc = this.baseScale * s;
     this.spr.setPosition(x + lean * this.dir, y - lift);
     this.spr.setScale(sc * sx * (1 - breathe * 0.5), sc * sy * (1 + breathe));
@@ -56,6 +81,9 @@ export class Unit {
     this.shadow.setPosition(x + 6 * s, y + 2).setDisplaySize(w * (1 - lift / 300), w * 0.3).setDepth(depth - 2);
     this.ring.setPosition(x, y).setSize(w * 0.86, w * 0.26).setDepth(depth - 1);
     this.ring.setDisplayOrigin(this.ring.width / 2, this.ring.height / 2);
+    if (this.isActive) {
+      this.ring.setStrokeStyle(5, 0xffe27a, 0.6 + 0.4 * Math.abs(Math.sin(this.t * 8)));
+    }
     this.drawHp(x, y - this.height - 14 * s - lift, s);
   }
 
@@ -63,8 +91,8 @@ export class Unit {
     const g = this.hpBar;
     g.clear();
     if (!this.alive) return;
-    const w = 74 * s;
-    const h = 10 * s;
+    const w = 90 * s;
+    const h = 12 * s;
     const pct = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
     g.setDepth(2000);
     g.fillStyle(0x000000, 0.55);
@@ -92,8 +120,8 @@ export class Unit {
     const to = cell(row, col);
     this.row = row;
     this.col = col;
-    const cav = this.def.speed > 1;
-    const dur = cav ? 300 : 360;
+    const cav = this.def.move > 2;
+    const dur = cav ? 190 : 260;
     if (cav) sfx.gallop();
     else sfx.step();
     const hop = { v: 0 };
@@ -117,8 +145,8 @@ export class Unit {
   }
 
   // Melee: wind up, dash in, slash, come back.
-  async melee(target, mult = 1) {
-    const cav = this.def.kind === 'cavalry';
+  async melee(target, dmg, tag = null) {
+    const cav = this.def.move > 2;
     const home = { x: this.pos.x, y: this.pos.y, s: this.pos.s };
     await tweenP(this.scene, { targets: this.pos, rot: cav ? -10 : -9, lean: -14 * this.pos.s, duration: 160, ease: 'Sine.Out' });
     sfx.swing();
@@ -135,14 +163,14 @@ export class Unit {
     });
     this.scene.fx.slash(target.pos.x, target.pos.y - target.height * 0.55, target.pos.s, this.dir);
     sfx.clash();
-    target.hit(Math.round(this.atk * mult), this.dir);
-    if (mult > 1) this.scene.fx.floatText('HÜCUM!', this.pos.x, this.pos.y - this.height - 40, '#ffd36b', 30);
+    target.hit(dmg, this.dir);
+    this.tagText(tag);
     await wait(this.scene, 120);
     await tweenP(this.scene, { targets: this.pos, x: home.x, y: home.y, s: home.s, rot: 0, lean: 0, duration: 260, ease: 'Sine.InOut' });
   }
 
   // Ranged: draw the bow, loose a volley, the first arrow deals the damage.
-  async shoot(target) {
+  async shoot(target, dmg, tag = null) {
     await tweenP(this.scene, { targets: this.pos, lean: -8 * this.pos.s, sx: 0.96, duration: 220, ease: 'Sine.Out' });
     sfx.bow();
     this.pos.lean = 6 * this.pos.s;
@@ -158,13 +186,14 @@ export class Unit {
     );
     await shots[0];
     sfx.thunk();
-    target.hit(this.atk, this.dir);
+    target.hit(dmg, this.dir);
+    this.tagText(tag);
     await Promise.all(shots);
     await wait(this.scene, 120);
   }
 
   // Musket: aim, flash + smoke at the muzzle, a fast tracer, recoil.
-  async fire(target) {
+  async fire(target, dmg, tag = null) {
     await tweenP(this.scene, { targets: this.pos, lean: -4 * this.pos.s, rot: -2, duration: 260, ease: 'Sine.Out' });
     const mx = this.pos.x + this.dir * 118 * this.pos.s;
     const my = this.pos.y - this.height * 0.74;
@@ -174,12 +203,13 @@ export class Unit {
     this.pos.rot = -5;
     this.scene.tweens.add({ targets: this.pos, lean: 0, rot: 0, duration: 380, ease: 'Sine.Out' });
     await this.scene.fx.tracer(mx, my, target.pos.x, target.pos.y - target.height * 0.55);
-    target.hit(this.atk, this.dir);
+    target.hit(dmg, this.dir);
+    this.tagText(tag);
     await wait(this.scene, 260);
   }
 
   // Cannon: recoil, big smoke, ballistic ball, explosion with splash.
-  async cannon(target, splash = []) {
+  async cannon(target, dmg, splash = []) {
     await tweenP(this.scene, { targets: this.pos, sx: 0.97, sy: 1.03, duration: 240, ease: 'Sine.Out' });
     const mx = this.pos.x + this.dir * 150 * this.pos.s;
     const my = this.pos.y - this.height * 0.66;
@@ -195,8 +225,8 @@ export class Unit {
     await this.scene.fx.ball(mx, my, tx, ty, this.pos.s);
     sfx.boom();
     this.scene.fx.explosion(tx, target.pos.y, target.pos.s);
-    target.hit(this.atk, this.dir);
-    splash.forEach((u) => u.alive && u.hit(Math.round(this.atk * 0.5), this.dir));
+    target.hit(dmg, this.dir);
+    splash.forEach((x) => x.u.alive && x.u.hit(x.dmg, this.dir));
     await wait(this.scene, 300);
   }
 

@@ -349,6 +349,31 @@ export function makeTextures(scene) {
       ctx.fill();
     }
   });
+  canvasTex(scene, 'flag-red', 90, 140, (ctx) => {
+    ctx.fillStyle = '#4a2c12';
+    ctx.fillRect(0, 0, 5, 140);
+    ctx.fillStyle = '#d9a62e';
+    ctx.beginPath();
+    ctx.arc(2.5, 4, 5, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#c3122b';
+    ctx.beginPath();
+    ctx.moveTo(5, 10);
+    ctx.quadraticCurveTo(45, 2, 86, 14);
+    ctx.lineTo(74, 34);
+    ctx.lineTo(86, 54);
+    ctx.quadraticCurveTo(45, 44, 5, 56);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(38, 33, 12, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#c3122b';
+    ctx.beginPath();
+    ctx.arc(43, 32, 10, 0, TAU);
+    ctx.fill();
+  });
   canvasTex(scene, 'ball', 32, 32, (ctx) => {
     const g = ctx.createRadialGradient(12, 11, 2, 16, 16, 15);
     g.addColorStop(0, '#8a8a8a');

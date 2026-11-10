@@ -32,7 +32,7 @@ function updateRotateHint() {
 }
 
 function createGame() {
-  applyLayout(true, aspect());
+  applyLayout(aspect());
   game = window.__ottoman = new Phaser.Game({
     // ?canvas forces the Canvas renderer (handy for testing low-end devices)
     type: /[?&]canvas\b/.test(location.search) ? Phaser.CANVAS : Phaser.AUTO,

@@ -33,7 +33,7 @@ export class EndCard {
     });
 
     const line = scene.add
-      .text(cx, E.lineY, won ? TEXT.victoryLine : TEXT.defeatLine, { fontFamily: FONT, fontSize: '28px', color: '#f6e7c8', align: 'center', wordWrap: { width: 600 } })
+      .text(cx, E.lineY, won ? TEXT.victoryLine : TEXT.defeatLine, { fontFamily: FONT, fontSize: '28px', color: '#f6e7c8', align: 'center', wordWrap: { width: W * 0.7 } })
       .setOrigin(0.5);
     line.setShadow(0, 2, '#000', 4, true, false);
 
