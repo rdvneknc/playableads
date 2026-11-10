@@ -73,8 +73,13 @@ export class Battle {
       target = this.targetFor(u);
     }
     if (!target) return;
-    if (u.def.kind === 'ranged') await u.shoot(target);
-    else await u.melee(target, u.def.kind === 'cavalry' && moved > 0 ? 1.5 : 1);
+    const k = u.def.kind;
+    if (k === 'ranged' || k === 'horsearcher') await u.shoot(target);
+    else if (k === 'gun') await u.fire(target);
+    else if (k === 'cannon') {
+      const splash = this.alive(target.side).filter((f) => f !== target && dist(f, target) === 1);
+      await u.cannon(target, splash);
+    } else await u.melee(target, k === 'cavalry' && moved > 0 ? 1.5 : 1);
     await wait(this.scene, 160);
   }
 

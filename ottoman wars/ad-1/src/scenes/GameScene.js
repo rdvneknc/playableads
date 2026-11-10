@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { AD, BOARD, BUDGET, ENEMY, FONT, GAME_WIDTH as W, GAME_HEIGHT as H, TEXT, UNITS } from '../config.js';
+import { AD, BOARD, BUDGET, ENEMY, FONT, GAME_WIDTH as W, GAME_HEIGHT as H, L, TEXT, UNITS } from '../config.js';
 import { cell, drawBoard, pick } from '../game/Board.js';
 import { Unit, wait, tweenP } from '../game/Unit.js';
 import { Battle } from '../game/Battle.js';
@@ -9,9 +9,7 @@ import { banner, goldText, makeButton, makeLogo } from '../ui/Ui.js';
 import { sfx } from '../audio/Sfx.js';
 import { notifyGameEnd } from '../ad/cta.js';
 
-const CARD_Y = 1060;
-const CARD_X = [130, 360, 590];
-const TYPES = ['yeniceri', 'azap', 'akinci'];
+const TYPES = ['yeniceri', 'azap', 'tufekci', 'akinci', 'tatar', 'top'];
 const MAX_ROUNDS = 8;
 
 export class GameScene extends Phaser.Scene {
@@ -27,7 +25,8 @@ export class GameScene extends Phaser.Scene {
     this.lastInputAt = this.time.now;
     this.fx = new Fx(this);
 
-    this.add.image(W / 2, H / 2, 'bg').setDepth(0);
+    const bg = this.add.image(W / 2, H / 2, L.bg).setDepth(0);
+    bg.setScale(Math.max(W / bg.width, H / bg.height));
     this.buildScenery();
     this.boardG = this.add.graphics().setDepth(50);
     this.redrawBoard();
@@ -47,16 +46,10 @@ export class GameScene extends Phaser.Scene {
 
   buildScenery() {
     // Ottoman camp on the left
-    this.add.image(78, 560, 'tent').setOrigin(0.5, 1).setScale(0.78).setDepth(10);
-    this.add.image(196, 520, 'tent').setOrigin(0.5, 1).setScale(0.5).setDepth(9).setTint(0xe8e0d0);
-    // Enemy castle on the right
-    this.castle = this.add.image(612, 562, 'castle').setOrigin(0.5, 1).setScale(0.74).setDepth(10);
-    const cs = this.castle.scale;
-    const flagX = this.castle.x + (285 - 170) * cs;
-    const flagY = this.castle.y - 330 * cs + 4;
-    this.flagPole = this.add.rectangle(flagX, flagY, 3, 34 * cs * 1.6, 0x3b3b3b).setOrigin(0.5, 1).setDepth(11);
-    this.flag = this.add.image(flagX + 1, flagY - 34 * cs * 1.6, 'flag-blue').setOrigin(0, 0).setScale(cs).setDepth(11);
-    this.tweens.add({ targets: this.flag, scaleX: cs * 0.82, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    L.tents.forEach(([x, y, sc], i) => this.add.image(x, y, 'tent').setOrigin(0.5, 1).setScale(sc).setDepth(10 - i).setTint(i ? 0xe8e0d0 : 0xffffff));
+    // Enemy castle on the right (team art)
+    this.castle = this.add.image(L.castle.x, L.castle.y, 'kale').setOrigin(0.5, 0.985).setDepth(10);
+    this.castle.setScale(L.castle.w / this.castle.width);
 
     // drifting dust motes for depth
     this.add
@@ -89,24 +82,24 @@ export class GameScene extends Phaser.Scene {
 
   buildHud() {
     // gold panel
-    const y = 66;
+    const { x: gx, y } = L.gold;
     const g = this.add.graphics().setDepth(3500);
     g.fillStyle(0x000000, 0.35);
-    g.fillRoundedRect(W / 2 - 150 + 4, y - 36 + 6, 300, 72, 36);
+    g.fillRoundedRect(gx - 150 + 4, y - 36 + 6, 300, 72, 36);
     g.fillStyle(0x8a5a12, 1);
-    g.fillRoundedRect(W / 2 - 154, y - 40, 308, 80, 40);
+    g.fillRoundedRect(gx - 154, y - 40, 308, 80, 40);
     g.fillStyle(0x2a170a, 1);
-    g.fillRoundedRect(W / 2 - 148, y - 34, 296, 68, 34);
-    this.add.image(W / 2 - 108, y, 'coin').setScale(0.95).setDepth(3501);
-    this.add.text(W / 2 - 64, y - 16, TEXT.gold, { fontFamily: FONT, fontSize: '18px', color: '#d8b97a' }).setOrigin(0, 0.5).setDepth(3501);
+    g.fillRoundedRect(gx - 148, y - 34, 296, 68, 34);
+    this.add.image(gx - 108, y, 'akce').setDisplaySize(62, 62).setDepth(3501);
+    this.add.text(gx - 64, y - 16, TEXT.gold, { fontFamily: FONT, fontSize: '18px', color: '#d8b97a' }).setOrigin(0, 0.5).setDepth(3501);
     this.goldText = this.add
-      .text(W / 2 - 64, y + 12, String(this.gold), { fontFamily: FONT, fontSize: '36px', color: '#ffd36b', stroke: '#1d1206', strokeThickness: 6 })
+      .text(gx - 64, y + 12, String(this.gold), { fontFamily: FONT, fontSize: '36px', color: '#ffd36b', stroke: '#1d1206', strokeThickness: 6 })
       .setOrigin(0, 0.5)
       .setDepth(3501);
     this.shownGold = this.gold;
 
-    this.logo = makeLogo(this, W / 2, 300, 0.62).setDepth(40);
-    this.instr = goldText(this, W / 2, 178, TEXT.place, 30, { title: false, colors: ['#ffffff', '#fff3d2', '#f3d18a'], thick: 0.2 }).setDepth(3500);
+    this.logo = makeLogo(this, L.logo.x, L.logo.y, L.logo.s).setDepth(40);
+    this.instr = goldText(this, L.instr.x, L.instr.y, TEXT.place, L.instr.size, { title: false, colors: ['#ffffff', '#fff3d2', '#f3d18a'], thick: 0.2 }).setDepth(3500);
   }
 
   setGold(v) {
@@ -126,7 +119,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   toast(str) {
-    this.fx.floatText(str, W / 2, 965, '#ffb3a8', 30);
+    this.fx.floatText(str, W / 2, L.hintY, '#ffb3a8', 30);
   }
 
   /* ─────────────────────────── cards ─────────────────────────── */
@@ -134,31 +127,27 @@ export class GameScene extends Phaser.Scene {
   buildCards() {
     this.cards = TYPES.map((type, i) => {
       const def = UNITS[type];
-      const c = this.add.container(CARD_X[i], CARD_Y).setDepth(3600);
-      const g = this.add.graphics();
-      const w = 196;
-      const h = 236;
-      g.fillStyle(0x000000, 0.4);
-      g.fillRoundedRect(-w / 2 + 4, -h / 2 + 8, w, h, 18);
-      g.fillStyle(0x8a5a12, 1);
-      g.fillRoundedRect(-w / 2 - 4, -h / 2 - 4, w + 8, h + 8, 20);
-      g.fillStyle(0xf0c75a, 1);
-      g.fillRoundedRect(-w / 2 - 1, -h / 2 - 1, w + 2, h + 2, 18);
-      g.fillStyle(0x5a1410, 1);
-      g.fillRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 15);
-      const portrait = this.add.image(0, -36, `${def.art}-p`).setDisplaySize(168, 150);
-      const frame = this.add.graphics();
-      frame.lineStyle(3, 0xf0c75a, 1);
-      frame.strokeRect(-84, -111, 168, 150);
-      const name = this.add.text(0, 58, def.name, { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#2a0606', strokeThickness: 5 }).setOrigin(0.5);
-      const coin = this.add.image(-26, 94, 'coin').setScale(0.5);
-      const cost = this.add.text(-6, 94, String(def.cost), { fontFamily: FONT, fontSize: '28px', color: '#ffd36b', stroke: '#2a0606', strokeThickness: 5 }).setOrigin(0, 0.5);
+      const c = this.add.container(L.cardX[i], L.cardY).setDepth(3600);
+      const frame = this.add.image(0, 0, 'kart');
+      const CARD_W = L.cardW;
+      const k = CARD_W / frame.width; // 256×340 art, window 33..221 × 44..233
+      frame.setScale(k);
+      const ox = -frame.width / 2;
+      const oy = -frame.height / 2;
+      const wx = (33 + 221) / 2;
+      const wy = (44 + 233) / 2;
+      const portrait = this.add.image((ox + wx) * k, (oy + wy) * k, `${def.art}-p`).setDisplaySize(190 * k, 190 * k);
+      const name = this.add
+        .text(0, (oy + 262) * k, def.name, { fontFamily: FONT, fontSize: `${Math.round((def.name.length > 7 ? 15 : 17) * (CARD_W / 112))}px`, color: '#fff3cf', stroke: '#0f1d0e', strokeThickness: 4 })
+        .setOrigin(0.5);
+      const coin = this.add.image(-14 * (CARD_W / 112), (oy + 306) * k, 'akce').setDisplaySize(24 * (CARD_W / 112), 24 * (CARD_W / 112));
+      const cost = this.add.text(0, (oy + 306) * k, String(def.cost), { fontFamily: FONT, fontSize: `${Math.round(22 * (CARD_W / 112))}px`, color: '#ffd36b', stroke: '#0f1d0e', strokeThickness: 4 }).setOrigin(0, 0.5);
       const glow = this.add.graphics();
-      glow.lineStyle(6, 0xfff1a8, 1);
-      glow.strokeRoundedRect(-w / 2 - 8, -h / 2 - 8, w + 16, h + 16, 22);
+      glow.lineStyle(5, 0xfff1a8, 1);
+      glow.strokeRoundedRect(-CARD_W / 2 - 3, -frame.displayHeight / 2 - 3, CARD_W + 6, frame.displayHeight + 6, 12);
       glow.setVisible(false);
-      c.add([g, portrait, frame, name, coin, cost, glow]);
-      c.setSize(w, h).setInteractive({ useHandCursor: true });
+      c.add([portrait, frame, name, coin, cost, glow]);
+      c.setSize(CARD_W, frame.displayHeight).setInteractive({ useHandCursor: true });
       c.type = type;
       c.glow = glow;
       c.portrait = portrait;
@@ -166,7 +155,7 @@ export class GameScene extends Phaser.Scene {
       return c;
     });
 
-    this.fightBtn = makeButton(this, W / 2, 1222, TEXT.fight, { w: 380, h: 96, size: 46, color: 0xc0262f, dark: 0x6e1015, onTap: (on) => this.onFight(on) }).setDepth(3600);
+    this.fightBtn = makeButton(this, L.fight.x, L.fight.y, TEXT.fight, { w: L.fight.w, size: Math.round(L.fight.w * 0.11), onTap: (on) => this.onFight(on) }).setDepth(3600);
     this.refreshCards();
   }
 
@@ -273,13 +262,13 @@ export class GameScene extends Phaser.Scene {
 
   buildTutorial() {
     this.hand = this.add.image(0, 0, 'hand').setOrigin(0.3, 0.05).setDepth(3800).setVisible(false);
-    this.hintText = goldText(this, W / 2, 965, TEXT.placeHint, 30, { title: false, colors: ['#ffffff', '#ffffff', '#ffe9b8'], thick: 0.22 }).setDepth(3800).setVisible(false);
+    this.hintText = goldText(this, (L.cardX[0] + L.cardX[5]) / 2, L.hintY, TEXT.placeHint, 30, { title: false, colors: ['#ffffff', '#ffffff', '#ffe9b8'], thick: 0.22 }).setDepth(3800).setVisible(false);
     this.time.delayedCall(900, () => this.showHint());
   }
 
   showHint() {
     if (this.state !== 'place' || this.handTween || this.units.some((u) => u.side === 'p')) return;
-    const from = { x: CARD_X[0], y: CARD_Y - 20 };
+    const from = { x: L.cardX[0], y: L.cardY - 20 };
     const to = cell(1, 1);
     this.hand.setVisible(true).setPosition(from.x, from.y).setAlpha(1);
     this.hintText.setVisible(true).setAlpha(1);
@@ -343,11 +332,11 @@ export class GameScene extends Phaser.Scene {
   async nextRound() {
     if (this.state !== 'battle') return;
     this.round += 1;
-    await banner(this, 470, TEXT.round(this.round), { color: 0xb3121f, hold: 380 });
+    await banner(this, L.bannerY, TEXT.round(this.round), { color: 0xb3121f, hold: 380 });
     await this.battle.sideTurn('p');
     if (await this.checkEnd()) return;
     await wait(this, 150);
-    await banner(this, 470, TEXT.enemyTurn, { color: 0x2c4f8f, hold: 260 });
+    await banner(this, L.bannerY, TEXT.enemyTurn, { color: 0x2c4f8f, hold: 260 });
     await this.battle.sideTurn('e');
     if (await this.checkEnd()) return;
     if (this.round >= MAX_ROUNDS) {
@@ -359,14 +348,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   promptAttack() {
-    const btn = makeButton(this, W / 2, 1120, TEXT.attack, {
-      w: 380,
-      h: 100,
-      size: 48,
-      color: 0xc0262f,
-      dark: 0x6e1015,
-      onTap: () => go(),
-    }).setDepth(3600);
+    const btn = makeButton(this, L.attack.x, L.attack.y, TEXT.attack, { w: L.attack.w, size: Math.round(L.attack.w * 0.115), onTap: () => go() }).setDepth(3600);
     btn.setScale(0);
     this.tweens.add({ targets: btn, scale: 1, duration: 300, ease: 'Back.Out', onComplete: () => this.tweens.add({ targets: btn, scale: 1.06, duration: 500, yoyo: true, repeat: -1 }) });
     let done = false;
@@ -398,15 +380,14 @@ export class GameScene extends Phaser.Scene {
     sfx.horn();
     const alive = this.battle.alive('p');
     alive.forEach((u) => this.tweens.add({ targets: u.pos, lift: 18 * u.pos.s, duration: 160, yoyo: true, repeat: 3 }));
-    cam.pan(560, 520, 600, 'Sine.easeInOut');
+    cam.pan(L.pan[0], L.pan[1], 600, 'Sine.easeInOut');
     cam.zoomTo(1.25, 600, 'Sine.easeInOut');
     await wait(this, 700);
     sfx.collapse();
     cam.shake(900, 0.012);
     this.tweens.add({ targets: this.castle, x: this.castle.x + 6, duration: 50, yoyo: true, repeat: 8 });
     await wait(this, 450);
-    this.castle.setTexture('castle-broken');
-    this.tweens.add({ targets: [this.flag, this.flagPole], angle: 70, y: '+=60', alpha: 0, duration: 700, ease: 'Quad.In' });
+    this.castle.setTexture('kale-yikik');
     for (let i = 0; i < 4; i++) this.time.delayedCall(i * 120, () => this.fx.dust(this.castle.x + (Math.random() - 0.5) * 160, this.castle.y - Math.random() * 120, 2.2, 12));
     const rubble = this.add
       .particles(this.castle.x, this.castle.y - 120, 'smoke', {
@@ -423,7 +404,7 @@ export class GameScene extends Phaser.Scene {
     await wait(this, 1100);
     cam.pan(W / 2, H / 2, 500, 'Sine.easeInOut');
     cam.zoomTo(1, 500, 'Sine.easeInOut');
-    await banner(this, 470, TEXT.victory, { color: 0xb3121f, hold: 700 });
+    await banner(this, L.bannerY, TEXT.victory, { color: 0xb3121f, hold: 700 });
   }
 
   finish(won, idle = false) {
@@ -444,7 +425,7 @@ export class GameScene extends Phaser.Scene {
           this.scene.restart();
         },
       });
-    if (!won && !idle) banner(this, 470, TEXT.defeat, { color: 0x3a3a3a, hold: 700 }).then(show);
+    if (!won && !idle) banner(this, L.bannerY, TEXT.defeat, { color: 0x3a3a3a, hold: 700 }).then(show);
     else show();
   }
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from './config.js';
+import { GAME_WIDTH, GAME_HEIGHT, applyLayout } from './config.js';
 import { BootScene } from './scenes/BootScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { startWhenReady, onPauseChange, onVolumeChange, notifyGameReady } from './ad/lifecycle.js';
@@ -24,23 +24,20 @@ async function loadFonts() {
   await Promise.all([load('OWTitle', titleFontUrl), load('OWUi', uiFontUrl)]);
 }
 
-function refreshScale() {
-  if (!game) return;
-  requestAnimationFrame(() => {
-    game.scale.refresh();
-    setTimeout(() => game.scale.refresh(), 150);
-  });
+// Landscape only. Held upright, the game still plays (letterboxed) with a hint to rotate.
+const aspect = () => Math.max(window.innerWidth, window.innerHeight) / Math.max(1, Math.min(window.innerWidth, window.innerHeight));
+function updateRotateHint() {
+  const el = document.getElementById('rotate-hint');
+  if (el) el.style.display = window.innerHeight > window.innerWidth ? 'flex' : 'none';
 }
 
-startWhenReady(async () => {
-  await loadFonts();
-
+function createGame() {
+  applyLayout(true, aspect());
   game = window.__ottoman = new Phaser.Game({
     // ?canvas forces the Canvas renderer (handy for testing low-end devices)
     type: /[?&]canvas\b/.test(location.search) ? Phaser.CANVAS : Phaser.AUTO,
     parent: 'game-container',
     backgroundColor: '#1d140c',
-    transparent: false,
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -55,11 +52,22 @@ startWhenReady(async () => {
     banner: false,
     scene: [BootScene, GameScene],
   });
+}
 
+function onResize() {
+  updateRotateHint();
+  if (!game) return;
+  requestAnimationFrame(() => game.scale.refresh());
+}
+
+startWhenReady(async () => {
+  await loadFonts();
+  createGame();
+  updateRotateHint();
   notifyGameReady();
-  window.addEventListener('orientationchange', refreshScale);
-  window.addEventListener('resize', refreshScale);
-  window.visualViewport?.addEventListener('resize', refreshScale);
+  window.addEventListener('orientationchange', onResize);
+  window.addEventListener('resize', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
 });
 
 onPauseChange((paused) => {

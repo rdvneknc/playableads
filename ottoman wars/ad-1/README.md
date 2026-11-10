@@ -1,6 +1,6 @@
 # Ottoman Wars — Playable Ad 1
 
-Turn-based placement battle: pick soldiers with a 100-gold budget, place them on your side, then fight round by round
+Landscape, turn-based placement battle: pick soldiers with a 100-akçe budget (6 units), place them on your side, then fight round by round
 until the enemy castle falls.
 
 ```bash

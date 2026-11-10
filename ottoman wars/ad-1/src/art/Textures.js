@@ -1,4 +1,4 @@
-import { GAME_WIDTH as W, GAME_HEIGHT as H, BOARD } from '../config.js';
+import { GAME_WIDTH as W, GAME_HEIGHT as H, BOARD, UNITS, LANDSCAPE } from '../config.js';
 
 // Scenery, effects and derived unit textures are painted here on canvas.
 const TAU = Math.PI * 2;
@@ -45,7 +45,7 @@ function alphaBox(img) {
 }
 
 // Trimmed copy of a unit (feet at the bottom edge) + a steel-blue enemy version.
-function makeUnitTextures(scene, key) {
+function makeUnitTextures(scene, key, face = 0.45) {
   const img = scene.textures.get(key).getSourceImage();
   const b = alphaBox(img);
   canvasTex(scene, `${key}-u`, b.w, b.h, (ctx) => ctx.drawImage(img, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h));
@@ -68,24 +68,24 @@ function makeUnitTextures(scene, key) {
     }
     ctx.putImageData(id, 0, 0);
   });
-  // Card portrait: head + shoulders on a warm backdrop
-  canvasTex(scene, `${key}-p`, 200, 200, (ctx) => {
-    const g = ctx.createRadialGradient(100, 80, 10, 100, 100, 140);
-    g.addColorStop(0, '#f6dca0');
-    g.addColorStop(1, '#a3542a');
+  // Card portrait: head + shoulders on a warm backdrop (fills the card frame's window)
+  canvasTex(scene, `${key}-p`, 190, 190, (ctx) => {
+    const g = ctx.createRadialGradient(95, 70, 10, 95, 95, 130);
+    g.addColorStop(0, '#f3dba6');
+    g.addColorStop(1, '#7c3b1c');
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 200, 200);
-    const size = Math.min(b.w, b.h * 0.62);
-    const sx = b.x + (b.w - size) / 2 + (key === 'akinci' ? b.w * 0.06 : 0);
-    ctx.drawImage(img, sx, b.y - size * 0.02, size, size, 0, 6, 200, 200);
+    ctx.fillRect(0, 0, 190, 190);
+    const size = Math.min(b.w, b.h) * 0.5;
+    const cx = b.x + b.w * face;
+    ctx.drawImage(img, cx - size / 2, b.y - size * 0.04, size, size, 0, 8, 190, 190);
   });
 }
 
 export function makeTextures(scene) {
-  ['yeniceri', 'azap', 'akinci'].forEach((k) => makeUnitTextures(scene, k));
+  Object.values(UNITS).forEach((u) => makeUnitTextures(scene, u.art, u.face));
 
   // ── Background ──
-  canvasTex(scene, 'bg', W, H, (ctx) => {
+  if (!LANDSCAPE) canvasTex(scene, 'bg', W, H, (ctx) => {
     const hz = 470; // horizon
     const sky = ctx.createLinearGradient(0, 0, 0, hz);
     sky.addColorStop(0, '#4f6fa3');
@@ -252,150 +252,6 @@ export function makeTextures(scene) {
     ctx.restore();
   });
 
-  // ── Enemy castle (whole + ruined) ──
-  const castle = (ctx, broken) => {
-    const stone = (x, y, w, h, shadeL) => {
-      const g = ctx.createLinearGradient(x, 0, x + w, 0);
-      g.addColorStop(0, shadeL ? '#a8a49a' : '#8f8b82');
-      g.addColorStop(1, shadeL ? '#77736b' : '#5f5c56');
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = 'rgba(40,36,30,0.35)';
-      ctx.lineWidth = 1;
-      for (let yy = y + 14; yy < y + h; yy += 14) {
-        ctx.beginPath();
-        ctx.moveTo(x, yy);
-        ctx.lineTo(x + w, yy);
-        ctx.stroke();
-        for (let xx = x + ((yy / 14) % 2 ? 10 : 22); xx < x + w; xx += 24) {
-          ctx.beginPath();
-          ctx.moveTo(xx, yy - 14);
-          ctx.lineTo(xx, yy);
-          ctx.stroke();
-        }
-      }
-    };
-    const crenel = (x, y, w, n) => {
-      const cw = w / (n * 2 - 1);
-      for (let i = 0; i < n; i++) stone(x + i * cw * 2, y - 16, cw, 16, true);
-    };
-    // walls
-    stone(20, 170, 280, 150, false);
-    if (!broken) crenel(20, 170, 280, 9);
-    // towers
-    stone(0, 90, 80, 230, true);
-    stone(240, 70, 90, 250, true);
-    if (!broken) {
-      crenel(0, 90, 80, 3);
-      // roofs
-      ctx.fillStyle = '#3c5d8f';
-      ctx.beginPath();
-      ctx.moveTo(-6, 74);
-      ctx.lineTo(40, 6);
-      ctx.lineTo(86, 74);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(234, 54);
-      ctx.lineTo(285, -20 + 20);
-      ctx.lineTo(336, 54);
-      ctx.fill();
-      // flag
-      ctx.fillStyle = '#3b3b3b';
-      ctx.fillRect(284, -10 + 20, 3, 40 - 20);
-    } else {
-      // jagged broken tops
-      ctx.fillStyle = 'rgba(0,0,0,0)';
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.moveTo(0, 60);
-      ctx.lineTo(80, 60);
-      ctx.lineTo(80, 150);
-      ctx.lineTo(55, 128);
-      ctx.lineTo(38, 160);
-      ctx.lineTo(18, 120);
-      ctx.lineTo(0, 140);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(230, 40);
-      ctx.lineTo(340, 40);
-      ctx.lineTo(340, 170);
-      ctx.lineTo(310, 130);
-      ctx.lineTo(288, 175);
-      ctx.lineTo(262, 120);
-      ctx.lineTo(240, 150);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(60, 150);
-      ctx.lineTo(260, 150);
-      ctx.lineTo(240, 215);
-      ctx.lineTo(190, 190);
-      ctx.lineTo(150, 230);
-      ctx.lineTo(110, 195);
-      ctx.lineTo(70, 210);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      // rubble + soot
-      ctx.fillStyle = 'rgba(30,25,20,0.35)';
-      ctx.fillRect(0, 160, 340, 160);
-      const rand = rng(3);
-      for (let i = 0; i < 40; i++) {
-        ctx.fillStyle = rand() < 0.5 ? '#8a867c' : '#6b675f';
-        const x = rand() * 340;
-        const s = 6 + rand() * 16;
-        ctx.fillRect(x, 300 + rand() * 20 - s / 2, s, s * 0.7);
-      }
-    }
-    // gate
-    ctx.fillStyle = '#2b1d12';
-    ctx.beginPath();
-    ctx.moveTo(130, 320);
-    ctx.lineTo(130, 260);
-    ctx.quadraticCurveTo(160, 220, 190, 260);
-    ctx.lineTo(190, 320);
-    ctx.fill();
-    ctx.strokeStyle = '#6b4a2a';
-    ctx.lineWidth = 3;
-    for (let x = 138; x < 190; x += 10) {
-      ctx.beginPath();
-      ctx.moveTo(x, 248);
-      ctx.lineTo(x, 320);
-      ctx.stroke();
-    }
-    // windows
-    ctx.fillStyle = '#2b2218';
-    [
-      [30, 140],
-      [270, 110],
-      [270, 180],
-    ].forEach(([x, y]) => {
-      if (broken && y < 160) return;
-      ctx.fillRect(x, y, 14, 24);
-    });
-  };
-  canvasTex(scene, 'castle', 340, 330, (ctx) => {
-    ctx.translate(0, 10);
-    castle(ctx, false);
-  });
-  canvasTex(scene, 'castle-broken', 340, 330, (ctx) => {
-    ctx.translate(0, 10);
-    castle(ctx, true);
-  });
-  canvasTex(scene, 'flag-blue', 60, 40, (ctx) => {
-    ctx.fillStyle = '#2f5fae';
-    ctx.beginPath();
-    ctx.moveTo(0, 2);
-    ctx.quadraticCurveTo(30, -4, 58, 6);
-    ctx.lineTo(50, 20);
-    ctx.lineTo(58, 34);
-    ctx.quadraticCurveTo(30, 26, 0, 34);
-    ctx.fill();
-    ctx.fillStyle = '#f2d36b';
-    ctx.fillRect(14, 12, 18, 10);
-  });
-
   // ── FX ──
   canvasTex(scene, 'shadow', 128, 40, (ctx) => {
     const g = ctx.createRadialGradient(64, 20, 4, 64, 20, 64);
@@ -493,26 +349,25 @@ export function makeTextures(scene) {
       ctx.fill();
     }
   });
-  canvasTex(scene, 'coin', 64, 64, (ctx) => {
-    const g = ctx.createRadialGradient(26, 22, 4, 32, 32, 30);
-    g.addColorStop(0, '#fff3b8');
-    g.addColorStop(0.5, '#f0bf3c');
-    g.addColorStop(1, '#9a6510');
+  canvasTex(scene, 'ball', 32, 32, (ctx) => {
+    const g = ctx.createRadialGradient(12, 11, 2, 16, 16, 15);
+    g.addColorStop(0, '#8a8a8a');
+    g.addColorStop(1, '#141414');
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(32, 32, 29, 0, TAU);
+    ctx.arc(16, 16, 14, 0, TAU);
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#7a4c08';
-    ctx.stroke();
-    // crescent stamp
-    ctx.fillStyle = '#8a5a0c';
+  });
+  canvasTex(scene, 'flash', 128, 64, (ctx) => {
+    const g = ctx.createRadialGradient(20, 32, 2, 40, 32, 60);
+    g.addColorStop(0, 'rgba(255,255,230,1)');
+    g.addColorStop(0.3, 'rgba(255,200,80,0.9)');
+    g.addColorStop(1, 'rgba(255,120,20,0)');
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(30, 32, 13, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#e6b23a';
-    ctx.beginPath();
-    ctx.arc(35, 31, 11, 0, TAU);
+    ctx.moveTo(0, 32);
+    ctx.quadraticCurveTo(50, 0, 128, 32);
+    ctx.quadraticCurveTo(50, 64, 0, 32);
     ctx.fill();
   });
   canvasTex(scene, 'hand', 140, 170, (ctx) => {

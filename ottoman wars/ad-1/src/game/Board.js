@@ -1,10 +1,10 @@
 import { BOARD, GAME_WIDTH as W } from '../config.js';
 
 // Perspective board: rows recede into the distance (0 = back, 2 = front).
-const { rowY, rowS, colW, cols, rows } = BOARD;
 
 // Interpolate y / scale at a fractional row (e.g. 1.5 = edge between rows 1 and 2).
 function at(rf) {
+  const { rowY, rowS, rows } = BOARD;
   const r = Math.max(-0.5, Math.min(rows - 0.5, rf));
   const i = Math.min(rows - 2, Math.max(0, Math.floor(r)));
   const t = r - i;
@@ -12,11 +12,13 @@ function at(rf) {
 }
 
 export function cell(row, col) {
+  const { colW, cols } = BOARD;
   const { y, s } = at(row);
   return { x: W / 2 + (col - (cols - 1) / 2) * colW * s, y: y + 22 * s, s };
 }
 
 export function tileQuad(row, col) {
+  const { colW, cols } = BOARD;
   const top = at(row - 0.5);
   const bot = at(row + 0.5);
   const xl = (c, s) => W / 2 + (c - cols / 2) * colW * s;
@@ -29,6 +31,7 @@ export function tileQuad(row, col) {
 }
 
 export function drawBoard(g, { highlight = null } = {}) {
+  const { cols, rows } = BOARD;
   g.clear();
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -66,6 +69,7 @@ export function drawBoard(g, { highlight = null } = {}) {
 
 // Which tile is under a screen point (null if none).
 export function pick(x, y) {
+  const { cols, rows } = BOARD;
   for (let r = rows - 1; r >= 0; r--) {
     for (let c = 0; c < cols; c++) {
       const q = tileQuad(r, c);

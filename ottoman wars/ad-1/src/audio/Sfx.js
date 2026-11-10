@@ -140,6 +140,21 @@ class Sfx {
     this.noiseHit(0.05, { gain: 0.08, from: 1800, to: 500 });
   }
 
+  musket() {
+    this.noiseHit(0.35, { gain: 0.4, from: 3500, to: 200 });
+    this.tone(180, 60, 0.18, { type: 'sine', gain: 0.25 });
+  }
+
+  cannon() {
+    this.noiseHit(0.9, { gain: 0.5, from: 1400, to: 60 });
+    this.tone(90, 30, 0.7, { type: 'sine', gain: 0.6 });
+  }
+
+  boom() {
+    this.noiseHit(0.6, { gain: 0.4, from: 2200, to: 80 });
+    this.tone(110, 35, 0.5, { type: 'sine', gain: 0.45 });
+  }
+
   hurt() {
     this.tone(160, 90, 0.16, { type: 'sawtooth', gain: 0.06 });
   }

@@ -44,14 +44,15 @@ export class Unit {
     if (!this.spr.active) return;
     this.t += dt;
     const { x, y, s, lift, rot, lean, sx, sy } = this.pos;
-    const breathe = this.alive ? Math.sin(this.t * (this.def.kind === 'cavalry' ? 2.4 : 2)) * 0.012 : 0;
+    const breathe = this.alive && this.def.kind !== 'cannon' ? Math.sin(this.t * (this.def.speed > 1 ? 2.4 : 2)) * 0.012 : 0;
     const sc = this.baseScale * s;
     this.spr.setPosition(x + lean * this.dir, y - lift);
     this.spr.setScale(sc * sx * (1 - breathe * 0.5), sc * sy * (1 + breathe));
     this.spr.setAngle(rot * this.dir);
     const depth = 100 + y;
     this.spr.setDepth(depth);
-    const w = (this.def.kind === 'cavalry' ? 150 : 96) * s;
+    const wide = ['cavalry', 'horsearcher', 'cannon'].includes(this.def.kind);
+    const w = (wide ? 160 : 96) * s;
     this.shadow.setPosition(x + 6 * s, y + 2).setDisplaySize(w * (1 - lift / 300), w * 0.3).setDepth(depth - 2);
     this.ring.setPosition(x, y).setSize(w * 0.86, w * 0.26).setDepth(depth - 1);
     this.ring.setDisplayOrigin(this.ring.width / 2, this.ring.height / 2);
@@ -91,7 +92,7 @@ export class Unit {
     const to = cell(row, col);
     this.row = row;
     this.col = col;
-    const cav = this.def.kind === 'cavalry';
+    const cav = this.def.speed > 1;
     const dur = cav ? 300 : 360;
     if (cav) sfx.gallop();
     else sfx.step();
@@ -147,8 +148,9 @@ export class Unit {
     this.pos.lean = 6 * this.pos.s;
     this.pos.sx = 1.03;
     this.scene.tweens.add({ targets: this.pos, lean: 0, sx: 1, duration: 260, ease: 'Sine.Out' });
-    const sx = this.pos.x + this.dir * 70 * this.pos.s;
-    const sy = this.pos.y - this.height * 0.66;
+    const horse = this.def.kind === 'horsearcher';
+    const sx = this.pos.x + this.dir * (horse ? 95 : 70) * this.pos.s;
+    const sy = this.pos.y - this.height * (horse ? 0.72 : 0.66);
     const tx = target.pos.x;
     const ty = target.pos.y - target.height * 0.5;
     const shots = [0, 1, 2].map((i) =>
@@ -159,6 +161,43 @@ export class Unit {
     target.hit(this.atk, this.dir);
     await Promise.all(shots);
     await wait(this.scene, 120);
+  }
+
+  // Musket: aim, flash + smoke at the muzzle, a fast tracer, recoil.
+  async fire(target) {
+    await tweenP(this.scene, { targets: this.pos, lean: -4 * this.pos.s, rot: -2, duration: 260, ease: 'Sine.Out' });
+    const mx = this.pos.x + this.dir * 118 * this.pos.s;
+    const my = this.pos.y - this.height * 0.74;
+    sfx.musket();
+    this.scene.fx.muzzle(mx, my, this.pos.s, this.dir);
+    this.pos.lean = -16 * this.pos.s;
+    this.pos.rot = -5;
+    this.scene.tweens.add({ targets: this.pos, lean: 0, rot: 0, duration: 380, ease: 'Sine.Out' });
+    await this.scene.fx.tracer(mx, my, target.pos.x, target.pos.y - target.height * 0.55);
+    target.hit(this.atk, this.dir);
+    await wait(this.scene, 260);
+  }
+
+  // Cannon: recoil, big smoke, ballistic ball, explosion with splash.
+  async cannon(target, splash = []) {
+    await tweenP(this.scene, { targets: this.pos, sx: 0.97, sy: 1.03, duration: 240, ease: 'Sine.Out' });
+    const mx = this.pos.x + this.dir * 150 * this.pos.s;
+    const my = this.pos.y - this.height * 0.66;
+    sfx.cannon();
+    this.scene.fx.muzzle(mx, my, this.pos.s * 1.8, this.dir);
+    this.scene.cameras.main.shake(160, 0.006);
+    this.pos.sx = 1;
+    this.pos.sy = 1;
+    this.pos.lean = -26 * this.pos.s;
+    this.scene.tweens.add({ targets: this.pos, lean: 0, duration: 600, ease: 'Cubic.Out' });
+    const tx = target.pos.x;
+    const ty = target.pos.y - target.height * 0.35;
+    await this.scene.fx.ball(mx, my, tx, ty, this.pos.s);
+    sfx.boom();
+    this.scene.fx.explosion(tx, target.pos.y, target.pos.s);
+    target.hit(this.atk, this.dir);
+    splash.forEach((u) => u.alive && u.hit(Math.round(this.atk * 0.5), this.dir));
+    await wait(this.scene, 300);
   }
 
   hit(dmg, fromDir) {

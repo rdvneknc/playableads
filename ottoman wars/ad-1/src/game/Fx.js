@@ -105,4 +105,96 @@ export class Fx {
     this.scene.tweens.add({ targets: t, scale: 1, duration: 200, ease: 'Back.Out' });
     this.scene.tweens.add({ targets: t, y: y - 50, alpha: 0, delay: 600, duration: 450, onComplete: () => t.destroy() });
   }
+
+  muzzle(x, y, s, dir) {
+    const f = this.scene.add.image(x, y, 'flash').setOrigin(0, 0.5).setScale(0.9 * s).setFlipX(dir < 0).setBlendMode(Phaser.BlendModes.ADD).setDepth(3050);
+    if (dir < 0) f.setOrigin(1, 0.5);
+    this.scene.tweens.add({ targets: f, alpha: 0, scaleX: 1.3 * s, duration: 140, onComplete: () => f.destroy() });
+    for (let i = 0; i < 6; i++) {
+      const p = this.scene.add
+        .image(x + dir * i * 10 * s, y, 'smoke')
+        .setTint(0xdedad0)
+        .setAlpha(0.8)
+        .setScale(0.3 * s)
+        .setDepth(3040);
+      this.scene.tweens.add({
+        targets: p,
+        x: p.x + dir * (40 + Math.random() * 60) * s,
+        y: p.y - (20 + Math.random() * 40) * s,
+        scale: (0.9 + Math.random() * 0.6) * s,
+        alpha: 0,
+        duration: 900 + Math.random() * 500,
+        ease: 'Cubic.Out',
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  tracer(sx, sy, tx, ty) {
+    return new Promise((resolve) => {
+      const g = this.scene.add.graphics().setDepth(3060).setBlendMode(Phaser.BlendModes.ADD);
+      const o = { t: 0 };
+      this.scene.tweens.add({
+        targets: o,
+        t: 1,
+        duration: 110,
+        onUpdate: () => {
+          const x = sx + (tx - sx) * o.t;
+          const y = sy + (ty - sy) * o.t;
+          const bx = sx + (tx - sx) * Math.max(0, o.t - 0.25);
+          const by = sy + (ty - sy) * Math.max(0, o.t - 0.25);
+          g.clear();
+          g.lineStyle(3, 0xfff1b8, 0.9);
+          g.lineBetween(bx, by, x, y);
+        },
+        onComplete: () => {
+          g.destroy();
+          resolve();
+        },
+      });
+    });
+  }
+
+  ball(sx, sy, tx, ty, s) {
+    return new Promise((resolve) => {
+      const b = this.scene.add.image(sx, sy, 'ball').setScale(0.9 * s).setDepth(3055);
+      const dist = Math.abs(tx - sx);
+      const arc = 90 + dist * 0.3;
+      const o = { t: 0 };
+      this.scene.tweens.add({
+        targets: o,
+        t: 1,
+        duration: 520 + dist * 0.4,
+        onUpdate: () => {
+          b.setPosition(sx + (tx - sx) * o.t, sy + (ty - sy) * o.t - Math.sin(o.t * Math.PI) * arc);
+          b.setScale((0.9 + Math.sin(o.t * Math.PI) * 0.35) * s);
+        },
+        onComplete: () => {
+          b.destroy();
+          resolve();
+        },
+      });
+    });
+  }
+
+  explosion(x, y, s) {
+    const fire = this.scene.add.image(x, y - 30 * s, 'dot').setTint(0xffb03c).setScale(2 * s).setBlendMode(Phaser.BlendModes.ADD).setDepth(3058);
+    this.scene.tweens.add({ targets: fire, scale: 6 * s, alpha: 0, duration: 380, ease: 'Cubic.Out', onComplete: () => fire.destroy() });
+    const p = this.scene.add
+      .particles(x, y - 20 * s, 'spark', {
+        speed: { min: 200, max: 520 },
+        angle: { min: 200, max: 340 },
+        gravityY: 900,
+        scale: { start: 0.5 * s, end: 0 },
+        lifespan: 600,
+        tint: [0xffd36b, 0xff7a2a, 0xffffff],
+        blendMode: 'ADD',
+        emitting: false,
+      })
+      .setDepth(3057);
+    p.explode(22);
+    this.scene.time.delayedCall(700, () => p.destroy());
+    this.dust(x, y, s * 1.6, 14);
+    this.scene.cameras.main.shake(260, 0.01);
+  }
 }
