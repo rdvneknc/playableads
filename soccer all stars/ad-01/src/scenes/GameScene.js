@@ -74,7 +74,7 @@ export class GameScene extends Phaser.Scene {
     }).setDepth(30);
 
     this.scene.launch('UI');
-    this.startKickoff(MATCH.kickoffMs);
+    this.startKickoff(MATCH.firstKickoffMs);
   }
 
   // ------------------------------------------------------------ public API

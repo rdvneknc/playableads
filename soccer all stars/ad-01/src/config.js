@@ -98,6 +98,7 @@ export const SHOULDER = {
 export const MATCH = {
   goalResetMs: 2500,
   kickoffMs: 900,
+  firstKickoffMs: 1700, // first kick-off after the intro: READY? holds a beat longer
 };
 
 export const BOT = {

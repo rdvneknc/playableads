@@ -386,7 +386,7 @@ export class UIScene extends Phaser.Scene {
 
   bindMatchEvents() {
     const ev = this.match.matchEvents;
-    ev.on('kickoff', () => showBanner(this, 'ready', 'READY?', null, 450));
+    ev.on('kickoff', (ms) => showBanner(this, 'ready', 'READY?', null, Math.max(350, (ms || 900) - 550)));
     ev.on('play', () => {
       if (!this.firstPlayShown) {
         this.firstPlayShown = true;

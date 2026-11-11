@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from './config.js';
-import { RotateScene } from './scenes/RotateScene.js';
 import { PreloadScene } from './scenes/PreloadScene.js';
+import { IntroScene } from './scenes/IntroScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { UIScene } from './scenes/UIScene.js';
 
@@ -21,7 +21,7 @@ const game = new Phaser.Game({
   input: { activePointers: 4 },
   render: { antialias: true, roundPixels: false },
   fps: { smoothStep: true },
-  scene: [RotateScene, PreloadScene, GameScene, UIScene],
+  scene: [PreloadScene, IntroScene, GameScene, UIScene],
 });
 
 function refreshScale() {

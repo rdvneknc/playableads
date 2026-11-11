@@ -36,7 +36,7 @@ export class PreloadScene extends Phaser.Scene {
     this.createFlameTexture();
     this.createGlowTexture();
     this.createConfettiTexture();
-    this.scene.start('Game');
+    this.scene.start('Intro');
   }
 
   createFlameTexture() {
