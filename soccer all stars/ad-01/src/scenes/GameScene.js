@@ -152,6 +152,7 @@ export class GameScene extends Phaser.Scene {
   beginPlay() {
     if (this.state === 'ended') return;
     this.state = 'playing';
+    sfx.kickoffWhistle();
     // Do not auto-attach the ball — kickoff team must go pick it up
     this.ball.setOwner(null);
     this.ball.vx = 0;
@@ -264,7 +265,7 @@ export class GameScene extends Phaser.Scene {
       a.charge = null;
     });
     sfx.whistle();
-    sfx.whistle(0.5);
+    if (this.score.player > this.score.bot) sfx.crowdSwell(0.5, 2.5, 3, 1);
     this.matchEvents.emit('ended', { score: { ...this.score } });
     notifyGameEnd();
   }
@@ -317,6 +318,13 @@ export class GameScene extends Phaser.Scene {
     if (actor.distanceTo(target) > SHOULDER.range) return fail('far');
 
     actor.startCharge(target);
+    // Shoulder charge drops the ball: it keeps rolling on its own and the
+    // charge no longer drags it along.
+    if (this.ball.owner === actor) {
+      this.ball.setOwner(null);
+      this.ball.vx *= 0.5;
+      this.ball.vy *= 0.5;
+    }
     sfx.whoosh();
     this.matchEvents.emit('shoulder', { team: actor.team });
     return ok;
@@ -522,6 +530,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Charging or knocked-back players pass through the ball, so a shoulder
+    // hit never carries or flips the ball with the bodies.
+    if (this.isShoulderGhost(actor)) return;
+
     ball.x = actor.x + nx * minD;
     ball.y = actor.y + ny * minD;
 
@@ -532,6 +544,10 @@ export class GameScene extends Phaser.Scene {
       ball.vy -= (1 + e) * vn * ny;
       if (!ball.owner && -vn > 500) sfx.touch();
     }
+  }
+
+  isShoulderGhost(actor) {
+    return actor.charging || (actor.stunned && Math.hypot(actor.kx, actor.ky) > 80);
   }
 
   updatePossession() {
@@ -593,12 +609,13 @@ export class GameScene extends Phaser.Scene {
 
     const { ball } = this;
     if (ball.owner === target) {
+      // The ball comes loose where it is; the knocked player flies off without it
       ball.setOwner(null);
-      const side = Phaser.Math.FloatBetween(-0.35, 0.35);
-      ball.vx = (nx - ny * side) * SHOULDER.ballPop;
-      ball.vy = (ny + nx * side) * SHOULDER.ballPop;
-      ball.lockFor(target, 450);
+      ball.vx *= 0.3;
+      ball.vy *= 0.3;
     }
+    ball.lockFor(target, 450);
+    ball.lockFor(attacker, 300);
 
     const cx = (attacker.x + target.x) / 2;
     const cy = (attacker.y + target.y) / 2;

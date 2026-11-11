@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { FONT } from '../config.js';
+import { sfx } from '../audio/Sfx.js';
 import { VirtualJoystick } from '../ui/VirtualJoystick.js';
 import { SkillButton } from '../ui/SkillButton.js';
 import { EndCard } from '../ui/EndCard.js';
@@ -25,6 +26,16 @@ export class UIScene extends Phaser.Scene {
     this.createPauseOverlay(width, height);
     this.createTutorial(width, height);
     this.bindMatchEvents();
+
+    // Audio may only start after a user gesture: unlock on the first touch,
+    // and give the kick-off whistle then if the browser blocked it earlier.
+    this.startedAt = this.time.now;
+    this.input.once('pointerdown', () => {
+      sfx.unlock();
+      this.time.delayedCall(60, () => {
+        if (!sfx.whistled && this.match.state === 'playing' && this.time.now - this.startedAt < 6000) sfx.kickoffWhistle();
+      });
+    });
 
     this.onHidden = () => {
       if (!this.paused && !this.ended) this.setPaused(true);
@@ -283,6 +294,7 @@ export class UIScene extends Phaser.Scene {
     this.joystick.reset();
     this.match.setPlayerInput(0, 0);
     this.drawPauseIcon(paused);
+    sfx.setPaused(paused);
 
     if (paused) {
       this.pauseLayer.setVisible(true);

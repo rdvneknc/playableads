@@ -350,12 +350,14 @@ export class Pitch {
     return ball.x < PITCH.left || ball.x > PITCH.right;
   }
 
-  // Whole ball past the goal line between the posts.
+  // Ball over the goal line between the posts.
   checkGoal(ball) {
     const inMouth = Math.abs(ball.y - PITCH.midY) < GOAL.halfWidth;
     if (!inMouth) return null;
-    if (ball.x + ball.radius < PITCH.left) return 'left';
-    if (ball.x - ball.radius > PITCH.right) return 'right';
+    // Counts once the ball is clearly over the line (centre past it) — a carrier
+    // standing on the line can no longer hold a ball that is visibly in the net.
+    if (ball.x < PITCH.left) return 'left';
+    if (ball.x > PITCH.right) return 'right';
     return null;
   }
 
