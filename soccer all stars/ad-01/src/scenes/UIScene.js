@@ -5,6 +5,7 @@ import { VirtualJoystick } from '../ui/VirtualJoystick.js';
 import { SkillButton } from '../ui/SkillButton.js';
 import { EndCard } from '../ui/EndCard.js';
 import { panelTexture, pillButton, gradText } from '../ui/Skin.js';
+import { showBanner } from '../ui/Banner.js';
 // HUD, controls, pause, banners and end card. Landscape layout.
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -87,16 +88,26 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(51);
 
-    this.hintText = this.add
-      .text(width / 2, 78, 'Beat the bot — SHOOT or DASH!', {
-        fontFamily: FONT,
-        fontSize: '22px',
-        color: '#ffffff',
-        stroke: '#0b3d1e',
-        strokeThickness: 6,
-      })
+    const hint = this.add.container(width / 2, 84).setDepth(20);
+    const hintLabel = this.add
+      .text(0, 0, 'BEAT THE BOT  ·  SHOOT or DASH!', { fontFamily: FONT, fontSize: '19px', color: '#ffffff', letterSpacing: 1 })
       .setOrigin(0.5)
-      .setDepth(20);
+      .setShadow(0, 2, 'rgba(0,0,0,0.5)', 2, false, true);
+    const hw = hintLabel.width / 2 + 36;
+    const hintBg = this.add.graphics();
+    hintBg.fillStyle(0x000000, 0.3);
+    hintBg.fillRoundedRect(-hw + 2, -18 + 4, hw * 2, 36, 18);
+    hintBg.fillStyle(0x0b1f3d, 0.88);
+    hintBg.fillRoundedRect(-hw, -18, hw * 2, 36, 18);
+    hintBg.lineStyle(2, 0xffd23f, 1);
+    hintBg.strokeRoundedRect(-hw, -18, hw * 2, 36, 18);
+    hintBg.fillStyle(0xffd23f, 1);
+    hintBg.fillCircle(-hw + 18, 0, 5);
+    hintBg.fillCircle(hw - 18, 0, 5);
+    hint.add([hintBg, hintLabel]);
+    hint.setScale(0.6).setAlpha(0);
+    this.tweens.add({ targets: hint, scale: 1, alpha: 1, duration: 360, ease: 'Back.Out', delay: 300 });
+    this.hintText = hint;
     this.time.delayedCall(3800, () => this.tweens.add({ targets: this.hintText, alpha: 0, duration: 500 }));
   }
 
@@ -342,14 +353,16 @@ export class UIScene extends Phaser.Scene {
     hand.fillRect(-9, -6, 18, 14);
 
     const label = this.add
-      .text(0, -100, 'Drag to move!', {
+      .text(0, -100, 'DRAG TO MOVE', {
         fontFamily: FONT,
-        fontSize: '22px',
+        fontSize: '20px',
         color: '#ffffff',
-        stroke: '#000000',
+        stroke: '#0b1f3d',
         strokeThickness: 6,
+        letterSpacing: 1,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setShadow(0, 3, 'rgba(0,0,0,0.45)', 3, true, false);
 
     this.tutorialHand = this.add.container(0, 0, [hand]).setScale(0.85);
     this.tutorial.add([this.tutorialHand, label]);
@@ -373,46 +386,26 @@ export class UIScene extends Phaser.Scene {
 
   bindMatchEvents() {
     const ev = this.match.matchEvents;
-    ev.on('kickoff', () => this.showBanner('READY?', '#ffffff', '#0b3d1e', 700));
+    ev.on('kickoff', () => showBanner(this, 'ready', 'READY?', null, 450));
     ev.on('play', () => {
       if (!this.firstPlayShown) {
         this.firstPlayShown = true;
-        this.showBanner('GO!', '#ffe566', '#7a3a00', 650);
+        showBanner(this, 'go', 'GO!', null, 350);
       }
     });
     ev.on('goal', ({ scorer, score }) => {
       if (scorer === 'player') {
         this.popScore(this.scoreText, score.player);
-        this.showBanner('GOOOAL!', '#ffffff', '#0b3d1e', 1600);
+        showBanner(this, 'goal', 'GOOOAL!', `YOU ${score.player}  –  ${score.bot} BOT`, 1500);
       } else {
         this.popScore(this.oppScoreText, score.bot);
-        this.showBanner('BOT SCORES!', '#ff8a80', '#5a0000', 1600);
+        showBanner(this, 'conceded', 'BOT SCORES', `YOU ${score.player}  –  ${score.bot} BOT  ·  STRIKE BACK!`, 1500);
       }
     });
     ev.on('shot', ({ team }) => {
       if (team === 'player') this.shotTutorialDone = true;
     });
     ev.on('ended', ({ score }) => this.showEndCard(score));
-  }
-
-  showBanner(text, color, stroke, holdMs) {
-    const { width, height } = this.scale;
-    const banner = this.add
-      .text(width / 2, height / 2 - 20, text, { fontFamily: FONT, fontSize: '72px', color, stroke, strokeThickness: 12 })
-      .setOrigin(0.5)
-      .setDepth(200)
-      .setScale(0.4)
-      .setAlpha(0);
-
-    this.tweens.add({ targets: banner, alpha: 1, scale: 1, duration: 320, ease: 'Back.Out' });
-    this.tweens.add({
-      targets: banner,
-      alpha: 0,
-      scale: 1.15,
-      duration: 260,
-      delay: holdMs,
-      onComplete: () => banner.destroy(),
-    });
   }
 
   showEndCard(score) {

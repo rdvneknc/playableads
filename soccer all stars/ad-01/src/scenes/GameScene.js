@@ -129,6 +129,7 @@ export class GameScene extends Phaser.Scene {
       this.brains.forEach((b) => b.reset());
     }
     if (restrictScorer) this.kickoffRestricted = restrictScorer;
+    this.kickoffTaken = false; // the kick-off side stays in its own half until it touches the ball
     this.ball.resetToSpawn();
     this.placeKickoffActors();
 
@@ -197,7 +198,26 @@ export class GameScene extends Phaser.Scene {
 
   // Scorer can't re-enter opp half / center circle — soft walls only, never long-range snaps
   enforceKickoffRestriction(actor) {
-    if (this.kickoffRestricted !== actor.team || !actor.enabled) return;
+    if (!actor.enabled) return;
+    // Kick-off side: hard half-way line until it has touched the ball
+    if (this.kickoffRestricted && !this.kickoffTaken && actor.team === this.kickoffOwner && this.state !== 'goal') {
+      if (this.ball.owner === actor) {
+        this.kickoffTaken = true;
+      } else {
+        const mid = PITCH.midX;
+        if (actor.team === 'player' && actor.x > mid) {
+          actor.x = mid;
+          if (actor.vx > 0) actor.vx = 0;
+          if (actor.kx > 0) actor.kx = 0;
+        } else if (actor.team === 'bot' && actor.x < mid) {
+          actor.x = mid;
+          if (actor.vx < 0) actor.vx = 0;
+          if (actor.kx < 0) actor.kx = 0;
+        }
+      }
+      return;
+    }
+    if (this.kickoffRestricted !== actor.team) return;
     if (this.state === 'goal') return;
 
     const mid = PITCH.midX;
@@ -265,7 +285,6 @@ export class GameScene extends Phaser.Scene {
       a.charge = null;
     });
     sfx.whistle();
-    if (this.score.player > this.score.bot) sfx.crowdSwell(0.5, 2.5, 3, 1);
     this.matchEvents.emit('ended', { score: { ...this.score } });
     notifyGameEnd();
   }
