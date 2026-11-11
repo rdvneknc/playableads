@@ -5,15 +5,28 @@ import { IntroScene } from './scenes/IntroScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { UIScene } from './scenes/UIScene.js';
 
+// Both orientations: the logical size follows the screen (1280×720 landscape,
+// 720×1280 portrait). Scenes listen for 'orientation' and re-lay themselves out.
+const isPortrait = () => window.innerHeight > window.innerWidth;
+// Portrait is 720 wide and grows taller on long phones (up to 1560) so it fills the screen.
+const sizeFor = (portrait) => {
+  if (!portrait) return [GAME_WIDTH, GAME_HEIGHT];
+  const aspect = window.innerHeight / Math.max(1, window.innerWidth);
+  return [GAME_HEIGHT, Math.round(Math.min(1560, Math.max(GAME_WIDTH, GAME_HEIGHT * aspect)))];
+};
+let portrait = isPortrait();
+const [startW, startH] = sizeFor(portrait);
+
 const game = new Phaser.Game({
-  type: Phaser.AUTO,
+  // ?canvas forces the Canvas renderer (handy for headless testing)
+  type: /[?&]canvas\b/.test(location.search) ? Phaser.CANVAS : Phaser.AUTO,
   parent: 'game-container',
   backgroundColor: '#4db352',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
+    width: startW,
+    height: startH,
     parent: 'game-container',
     expandParent: true,
     resizeInterval: 250,
@@ -24,12 +37,37 @@ const game = new Phaser.Game({
   scene: [PreloadScene, IntroScene, GameScene, UIScene],
 });
 
+function checkOrientation() {
+  const now = isPortrait();
+  if (now === portrait) {
+    // same orientation, different phone shape (e.g. browser bars) — keep the portrait height in step
+    const [w, h] = sizeFor(portrait);
+    if (portrait && Math.abs(h - game.scale.height) > 40) {
+      game.scale.setGameSize(w, h);
+      game.events.emit('orientation', portrait);
+    }
+    return;
+  }
+  portrait = now;
+  const [w, h] = sizeFor(portrait);
+  game.scale.setGameSize(w, h);
+  game.events.emit('orientation', portrait);
+}
+
 function refreshScale() {
   // iOS/Android need a beat after orientationchange before sizes settle
+  checkOrientation();
   requestAnimationFrame(() => {
+    checkOrientation();
     game.scale.refresh();
-    setTimeout(() => game.scale.refresh(), 120);
-    setTimeout(() => game.scale.refresh(), 400);
+    setTimeout(() => {
+      checkOrientation();
+      game.scale.refresh();
+    }, 120);
+    setTimeout(() => {
+      checkOrientation();
+      game.scale.refresh();
+    }, 400);
   });
 }
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { AD, BALL, BOOST, COLORS, DRIBBLE, GOAL, MATCH, PHYSICS, PITCH, SHOT, SHOULDER } from '../config.js';
+import { AD, BALL, BOOST, COLORS, DRIBBLE, GOAL, MATCH, PHYSICS, PITCH, SHOT, SHOULDER, GAME_WIDTH, GAME_HEIGHT } from '../config.js';
 // PITCH.centerRadius used for kickoff restriction
 import { SimClock } from '../game/Cooldown.js';
 import { Pitch } from '../game/Pitch.js';
@@ -73,6 +73,13 @@ export class GameScene extends Phaser.Scene {
       emitting: false,
     }).setDepth(30);
 
+    // UI-only state that must survive the UI scene being rebuilt on rotation
+    this.uiState = { tutorialDone: false, shotTutorialDone: false, firstPlayShown: false, hintShown: false };
+    this.applyView();
+    this.onOrientation = () => this.applyView();
+    this.game.events.on('orientation', this.onOrientation);
+    this.events.once('shutdown', () => this.game.events.off('orientation', this.onOrientation));
+
     this.scene.launch('UI');
     this.startKickoff(MATCH.firstKickoffMs);
   }
@@ -88,7 +95,45 @@ export class GameScene extends Phaser.Scene {
     return this.state === 'playing' || this.state === 'goal';
   }
 
+  // Landscape: world = screen. Portrait: the camera turns the pitch so the player
+  // attacks up the screen (world +x = screen up, world +y = screen right).
+  applyView() {
+    const { width, height } = this.scale;
+    const cam = this.cameras.main;
+    cam.setSize(width, height);
+    const portrait = height > width;
+    const grass = this.pitch.grass;
+    if (!portrait) {
+      this.view = { portrait, upright: 0, down: { x: 0, y: 1 } };
+      cam.setRotation(0).setZoom(1).centerOn(width / 2, height / 2);
+      grass.setPosition(GAME_WIDTH / 2, GAME_HEIGHT / 2).setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+      return;
+    }
+    this.view = { portrait, upright: Math.PI / 2, down: { x: -1, y: 0 } };
+    const top = 92; // HUD
+    const bottom = 230; // joystick + buttons
+    const avail = height - top - bottom;
+    const along = PITCH.right - PITCH.left + GOAL.depth * 2 + 24;
+    const across = PITCH.bottom - PITCH.top + 36;
+    const zoom = Math.min(avail / along, (width - 20) / across);
+    const s = (top - bottom) / 2; // pitch centre sits this far from the screen centre
+    const wx = PITCH.cx + s / zoom;
+    const wy = (PITCH.top + PITCH.bottom) / 2;
+    cam.setRotation(-Math.PI / 2).setZoom(zoom).centerOn(wx, wy);
+    // grass covers the whole rotated viewport
+    const spanX = height / zoom;
+    const spanY = width / zoom;
+    const k = Math.max(spanX / GAME_WIDTH, spanY / GAME_HEIGHT) * 1.05;
+    grass.setPosition(wx, wy).setDisplaySize(GAME_WIDTH * k, GAME_HEIGHT * k);
+  }
+
   setPlayerInput(mx, my) {
+    // joystick is in screen space; turn it into world space
+    if (this.view?.portrait) {
+      this.playerInput.mx = -my;
+      this.playerInput.my = mx;
+      return;
+    }
     this.playerInput.mx = mx;
     this.playerInput.my = my;
   }

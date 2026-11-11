@@ -17,16 +17,31 @@ export class UIScene extends Phaser.Scene {
     this.match = this.scene.get('Game');
     this.paused = false;
     this.ended = false;
-    this.shotTutorialDone = false;
+    // state kept on the Game scene so a rotation (which rebuilds this scene) doesn't reset it
+    this.ui = this.match.uiState;
 
-    this.input.addPointer(3);
+    if (this.input.manager.pointersTotal < 4) this.input.addPointer(3);
 
     this.createHud(width);
     this.createTopBar(width, height);
     this.createControls(width, height);
     this.createPauseOverlay(width, height);
-    this.createTutorial(width, height);
+    if (!this.ui.tutorialDone) this.createTutorial(width, height);
     this.bindMatchEvents();
+
+    // Rebuilt in place after a rotation: restore score, pause and end card
+    this.scoreText.setText(String(this.match.score.player));
+    this.oppScoreText.setText(String(this.match.score.bot));
+    if (this.match.state === 'ended') {
+      this.ended = true;
+      this.endCard = new EndCard(this, { score: { ...this.match.score }, onReplay: () => this.match.restartMatch() });
+    } else if (this.scene.isPaused('Game')) {
+      this.setPaused(true);
+    }
+
+    this.onOrientation = () => this.scene.restart();
+    this.game.events.on('orientation', this.onOrientation);
+    this.events.once('shutdown', () => this.game.events.off('orientation', this.onOrientation));
 
     // Audio may only start after a user gesture: unlock on the first touch,
     // and give the kick-off whistle then if the browser blocked it earlier.
@@ -106,9 +121,16 @@ export class UIScene extends Phaser.Scene {
     hintBg.fillCircle(hw - 18, 0, 5);
     hint.add([hintBg, hintLabel]);
     hint.setScale(0.6).setAlpha(0);
-    this.tweens.add({ targets: hint, scale: 1, alpha: 1, duration: 360, ease: 'Back.Out', delay: 300 });
     this.hintText = hint;
-    this.time.delayedCall(3800, () => this.tweens.add({ targets: this.hintText, alpha: 0, duration: 500 }));
+    if (this.match.uiState.hintShown) {
+      hint.setVisible(false);
+    } else {
+      this.tweens.add({ targets: hint, scale: 1, alpha: 1, duration: 360, ease: 'Back.Out', delay: 300 });
+      this.time.delayedCall(3800, () => {
+        this.match.uiState.hintShown = true;
+        this.tweens.add({ targets: this.hintText, alpha: 0, duration: 500 });
+      });
+    }
   }
 
   updateTimer() {
@@ -166,7 +188,10 @@ export class UIScene extends Phaser.Scene {
 
   createControls(width, height) {
     // Landscape: stick on the left, action buttons on the right
-    const zone = new Phaser.Geom.Rectangle(0, height * 0.2, width * 0.48, height * 0.8);
+    const portrait = height > width;
+    const zone = portrait
+      ? new Phaser.Geom.Rectangle(0, height * 0.5, width * 0.55, height * 0.5)
+      : new Phaser.Geom.Rectangle(0, height * 0.2, width * 0.48, height * 0.8);
     this.joystick = new VirtualJoystick(this, 120, height - 100, {
       radius: 88,
       knobRadius: 34,
@@ -225,8 +250,8 @@ export class UIScene extends Phaser.Scene {
     const foe = g.nearestFoe(player);
     this.shoulderBtn.setState(sh.progress, sh.remainingMs, !!foe && player.distanceTo(foe) < 220);
 
-    this.shootBtn.setHighlight(hasBall && !this.shotTutorialDone && g.isPlaying);
-    this.superBtn.setHighlight(this.shotTutorialDone && dash.ready && g.isPlaying);
+    this.shootBtn.setHighlight(hasBall && !this.ui.shotTutorialDone && g.isPlaying);
+    this.superBtn.setHighlight(this.ui.shotTutorialDone && dash.ready && g.isPlaying);
   }
 
   createPauseOverlay(width, height) {
@@ -379,6 +404,7 @@ export class UIScene extends Phaser.Scene {
 
   hideTutorial() {
     if (!this.tutorial) return;
+    this.ui.tutorialDone = true;
     const t = this.tutorial;
     this.tutorial = null;
     this.tweens.add({ targets: t, alpha: 0, duration: 250, onComplete: () => t.destroy() });
@@ -386,10 +412,18 @@ export class UIScene extends Phaser.Scene {
 
   bindMatchEvents() {
     const ev = this.match.matchEvents;
+    // remember what we attach so a rebuild (rotation) doesn't stack duplicates
+    const on = ev.on.bind(ev);
+    const bound = [];
+    ev.on = (name, fn) => {
+      bound.push([name, fn]);
+      return on(name, fn);
+    };
+    this.events.once('shutdown', () => bound.forEach(([n, f]) => ev.off(n, f)));
     ev.on('kickoff', (ms) => showBanner(this, 'ready', 'READY?', null, Math.max(350, (ms || 900) - 550)));
     ev.on('play', () => {
-      if (!this.firstPlayShown) {
-        this.firstPlayShown = true;
+      if (!this.ui.firstPlayShown) {
+        this.ui.firstPlayShown = true;
         showBanner(this, 'go', 'GO!', null, 350);
       }
     });
@@ -403,9 +437,10 @@ export class UIScene extends Phaser.Scene {
       }
     });
     ev.on('shot', ({ team }) => {
-      if (team === 'player') this.shotTutorialDone = true;
+      if (team === 'player') this.ui.shotTutorialDone = true;
     });
     ev.on('ended', ({ score }) => this.showEndCard(score));
+    ev.on = on;
   }
 
   showEndCard(score) {

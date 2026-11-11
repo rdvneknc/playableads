@@ -22,9 +22,21 @@ export class IntroScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
     const cx = width / 2;
+    const portrait = height > width;
     this.leaving = false;
+    // Rotating rebuilds the screen for the new shape (the auto-start timer restarts too)
+    this.onOrientation = () => this.scene.restart();
+    this.game.events.on('orientation', this.onOrientation);
+    this.events.once('shutdown', () => this.game.events.off('orientation', this.onOrientation));
+    const Y = portrait
+      ? (() => {
+          const k = height / 1280;
+          return { title: 130 * k, tag: 180 * k, vs: 310 * k, cards: [600 * k, 830 * k], cta: height - 170, titleSize: 58 };
+        })()
+      : { title: 78, tag: 128, vs: 222, cards: [446], cta: 640, titleSize: 58 };
 
-    this.add.image(cx, height / 2, 'grass').setDisplaySize(width, height);
+    const bg = this.add.image(cx, height / 2, 'grass');
+    bg.setScale(Math.max(width / bg.width, height / bg.height));
     this.add.rectangle(cx, height / 2, width, height, 0x050b1c, 0.72);
     const glow = this.add.graphics();
     for (let i = 6; i > 0; i--) {
@@ -33,13 +45,14 @@ export class IntroScene extends Phaser.Scene {
     }
 
     // ── title + match-up ──
-    const title = gradText(this, cx, 78, 'SOCCER ALL STARS', 58);
+    const title = gradText(this, cx, Y.title, portrait ? 'SOCCER\nALL STARS' : 'SOCCER ALL STARS', Y.titleSize);
+    if (portrait) title.setAlign('center').setLineSpacing(-10);
     const tag = this.add
-      .text(cx, 128, '1 vs 1  ·  30 SECONDS  ·  MOST GOALS WINS', { fontFamily: FONT, fontSize: '19px', color: '#bfe3ff', letterSpacing: 2 })
+      .text(cx, portrait ? Y.tag + 60 : Y.tag, portrait ? '1 vs 1  ·  30 SECONDS\nMOST GOALS WINS' : '1 vs 1  ·  30 SECONDS  ·  MOST GOALS WINS', { fontFamily: FONT, fontSize: '19px', color: '#bfe3ff', letterSpacing: 2, align: 'center', lineSpacing: 6 })
       .setOrigin(0.5);
 
     const badge = (x, key, color, name) => {
-      const c = this.add.container(x, 222);
+      const c = this.add.container(x, portrait ? Y.vs + 40 : Y.vs);
       const g = this.add.graphics();
       g.fillStyle(0x000000, 0.35);
       g.fillCircle(3, 5, 48);
@@ -57,17 +70,18 @@ export class IntroScene extends Phaser.Scene {
     };
     const you = badge(cx - 150, 'player', COLORS.goalBlue, 'YOU');
     const bot = badge(cx + 150, 'opponent', COLORS.goalRed, 'BOT');
-    const vs = gradText(this, cx, 222, 'VS', 46, ['#ffffff', '#ffe1dc', '#ff8a7a'], '#3a0606');
+    const vs = gradText(this, cx, portrait ? Y.vs + 40 : Y.vs, 'VS', 46, ['#ffffff', '#ffe1dc', '#ff8a7a'], '#3a0606');
 
     // ── control cards ──
-    const cardW = 210;
+    const cardW = portrait ? 290 : 210;
     const cardH = 200;
-    const gap = 22;
-    const y = 446;
-    const x0 = cx - ((cardW + gap) * CONTROLS.length - gap) / 2 + cardW / 2;
-    const cards = CONTROLS.map((c, i) => this.card(x0 + i * (cardW + gap), y, cardW, cardH, c));
+    const gap = portrait ? 26 : 22;
+    const perRow = portrait ? 2 : 4;
+    const x0 = cx - ((cardW + gap) * perRow - gap) / 2 + cardW / 2;
+    const slots = CONTROLS.map((c, i) => ({ x: x0 + (i % perRow) * (cardW + gap), y: Y.cards[Math.floor(i / perRow)] }));
+    const cards = CONTROLS.map((c, i) => this.card(slots[i].x, slots[i].y, cardW, cardH, c));
 
-    const cta = pillButton(this, cx, 640, 'TAP TO PLAY', {
+    const cta = pillButton(this, cx, Y.cta, 'TAP TO PLAY', {
       w: 330,
       h: 74,
       size: 34,
@@ -91,7 +105,7 @@ export class IntroScene extends Phaser.Scene {
     cards.forEach((c, i) => {
       c.y += 60;
       c.setAlpha(0);
-      this.tweens.add({ targets: c, y: y, alpha: 1, duration: 420, ease: 'Back.Out', delay: 800 + i * 160 });
+      this.tweens.add({ targets: c, y: slots[i].y, alpha: 1, duration: 420, ease: 'Back.Out', delay: 800 + i * 160 });
     });
     cta.setScale(0);
     this.tweens.add({

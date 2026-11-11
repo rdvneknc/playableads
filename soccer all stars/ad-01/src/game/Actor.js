@@ -268,7 +268,8 @@ export class Actor {
     if (!this.enabled) return;
     this.view.setPosition(this.x, this.y);
     this.shadow.setPosition(this.x + 4, this.y + 8);
-    this.label?.setPosition(this.x, this.y + 58);
+    const view = this.scene.view || { upright: 0, down: { x: 0, y: 1 } };
+    this.label?.setPosition(this.x + view.down.x * 58, this.y + view.down.y * 58).setRotation(view.upright);
     this.pointer.setRotation(this.heading);
 
     if (this.stunned) {
@@ -294,6 +295,9 @@ export class Actor {
       this.ring.setAlpha(1);
       this.ring.setStrokeStyle(5, this.ringColor, 0.95);
     }
+
+    // keep the face upright when the camera is rotated for portrait
+    this.sprite.rotation += view.upright;
 
     const squash = this.charging || this.boosting || this.dashing ? 1.1 : 1;
     const stretch = this.dashing ? 1.12 : this.boosting ? 1.04 : 1;

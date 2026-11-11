@@ -28,7 +28,7 @@ export class Pitch {
 
   drawGround() {
     // Provided grass art as the floor only — lines / boxes stay drawn above
-    this.scene.add
+    this.grass = this.scene.add
       .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'grass')
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
       .setDepth(0);
@@ -36,10 +36,12 @@ export class Pitch {
     const g = this.scene.add.graphics().setDepth(1);
 
     g.fillStyle(0x000000, 0.08);
-    g.fillRect(0, 0, GAME_WIDTH, PITCH.top);
-    g.fillRect(0, PITCH.bottom, GAME_WIDTH, GAME_HEIGHT - PITCH.bottom);
-    g.fillRect(0, PITCH.top, PITCH.left, PITCH.bottom - PITCH.top);
-    g.fillRect(PITCH.right, PITCH.top, GAME_WIDTH - PITCH.right, PITCH.bottom - PITCH.top);
+    // Off-pitch tint reaches well past the world so a rotated/zoomed portrait view has no seams
+    const X = 1200;
+    g.fillRect(-X, -X, GAME_WIDTH + 2 * X, PITCH.top + X);
+    g.fillRect(-X, PITCH.bottom, GAME_WIDTH + 2 * X, GAME_HEIGHT - PITCH.bottom + X);
+    g.fillRect(-X, PITCH.top, PITCH.left + X, PITCH.bottom - PITCH.top);
+    g.fillRect(PITCH.right, PITCH.top, GAME_WIDTH - PITCH.right + X, PITCH.bottom - PITCH.top);
 
     const { left, right, top, bottom } = PITCH;
     const cx = PITCH.cx;
