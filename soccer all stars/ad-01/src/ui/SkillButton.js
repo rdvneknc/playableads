@@ -12,6 +12,7 @@ export class SkillButton {
     labelColor = '#ffffff',
     labelStroke = '#0b2f7a',
     labelAngle = 0,
+    rim = 0xffffff,
     onPress,
     isBlocked = () => false,
   }) {
@@ -24,21 +25,41 @@ export class SkillButton {
 
     this.container = scene.add.container(x, y).setDepth(100);
 
-    this.glow = scene.add.circle(0, 0, size * 0.56, 0xffffff, 0).setStrokeStyle(6, 0xfff27a, 0.9).setVisible(false);
-    this.img = scene.add.image(0, 0, texture).setDisplaySize(size, size);
+    this.glow = scene.add.circle(0, 0, size * 0.6, 0xffffff, 0).setStrokeStyle(7, 0xfff27a, 0.95).setVisible(false);
+    // backing plate: soft shadow, dark disc and a coloured rim so the art pops off the grass
+    this.plate = scene.add.graphics();
+    this.plate.fillStyle(0x000000, 0.35);
+    this.plate.fillCircle(3, 7, size * 0.55);
+    this.plate.fillStyle(0x0a1530, 0.85);
+    this.plate.fillCircle(0, 0, size * 0.55);
+    this.plate.lineStyle(Math.max(3, size * 0.035), rim, 1);
+    this.plate.strokeCircle(0, 0, size * 0.55);
+    this.plate.lineStyle(2, 0xffffff, 0.35);
+    this.plate.strokeCircle(0, 0, size * 0.55 - 6);
+    this.img = scene.add.image(0, 0, texture).setDisplaySize(size * 0.96, size * 0.96);
     this.cooldownGfx = scene.add.graphics();
     this.countText = scene.add
       .text(0, 0, '', { fontFamily: FONT, fontSize: `${Math.round(size * 0.32)}px`, color: '#ffffff', stroke: '#000000', strokeThickness: 5 })
       .setOrigin(0.5);
+    // label on a small pill that overlaps the bottom of the plate
+    const fs = Math.round(Phaser.Math.Clamp(size * 0.15, 15, 24));
     this.label = scene.add
-      .text(0, size * 0.58, label, { fontFamily: FONT, fontSize: size > 105 ? '22px' : '18px', color: labelColor, stroke: labelStroke, strokeThickness: 5 })
+      .text(0, size * 0.55, label, { fontFamily: FONT, fontSize: `${fs}px`, color: labelColor, stroke: labelStroke, strokeThickness: 4, letterSpacing: 1 })
       .setOrigin(0.5)
       .setAngle(labelAngle);
+    const lw = this.label.width + 22;
+    const lh = fs + 12;
+    this.labelBg = scene.add.graphics();
+    this.labelBg.fillStyle(0x061024, 0.92);
+    this.labelBg.fillRoundedRect(-lw / 2, size * 0.55 - lh / 2, lw, lh, lh / 2);
+    this.labelBg.lineStyle(2, rim, 1);
+    this.labelBg.strokeRoundedRect(-lw / 2, size * 0.55 - lh / 2, lw, lh, lh / 2);
 
-    this.container.add([this.glow, this.img, this.cooldownGfx, this.countText, this.label]);
+    this.container.add([this.glow, this.plate, this.img, this.cooldownGfx, this.countText, this.labelBg, this.label]);
 
     const tw = this.img.width;
-    this.img.setInteractive(new Phaser.Geom.Circle(tw / 2, tw / 2, tw * 0.48), Phaser.Geom.Circle.Contains);
+    // generous touch target: the whole plate plus a little margin
+    this.img.setInteractive(new Phaser.Geom.Circle(tw / 2, tw / 2, tw * 0.6), Phaser.Geom.Circle.Contains);
     this.img.on('pointerdown', this.press, this);
   }
 
@@ -86,7 +107,7 @@ export class SkillButton {
     g.clear();
 
     if (!ready) {
-      const r = this.size * 0.46;
+      const r = this.size * 0.47;
       const start = -Math.PI / 2;
       g.fillStyle(0x000000, 0.55);
       g.slice(0, 0, r, start + progress * Math.PI * 2, start + Math.PI * 2, false);

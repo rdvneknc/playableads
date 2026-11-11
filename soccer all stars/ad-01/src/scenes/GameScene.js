@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.view = { portrait, upright: Math.PI / 2, down: { x: -1, y: 0 } };
     const top = 92; // HUD
-    const bottom = 230; // joystick + buttons
+    const bottom = Math.round(Phaser.Math.Clamp(height * 0.25, 320, 400)); // control deck (same formula as UIScene)
     const avail = height - top - bottom;
     const along = PITCH.right - PITCH.left + GOAL.depth * 2 + 24;
     const across = PITCH.bottom - PITCH.top + 36;

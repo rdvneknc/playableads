@@ -187,54 +187,89 @@ export class UIScene extends Phaser.Scene {
   }
 
   createControls(width, height) {
-    // Landscape: stick on the left, action buttons on the right
     const portrait = height > width;
-    const zone = portrait
-      ? new Phaser.Geom.Rectangle(0, height * 0.5, width * 0.55, height * 0.5)
-      : new Phaser.Geom.Rectangle(0, height * 0.2, width * 0.48, height * 0.8);
-    this.joystick = new VirtualJoystick(this, 120, height - 100, {
-      radius: 88,
-      knobRadius: 34,
-      zone,
-      isBlocked: () => this.blocked,
-    });
-    this.joystick.once('start', () => this.hideTutorial());
-
     const isBlocked = () => this.blocked;
     const act = (type) => () => this.match.playerAction(type);
 
-    // Practical L layout for right thumb: Shoot primary, Dash above, Bump left
-    const gap = 18;
-    const shootSize = 118;
-    const sideSize = 92;
-    const ox = width - 28 - shootSize / 2;
-    const oy = height - 28 - shootSize / 2;
+    let stick, shoot, dash, bump, zone;
+    if (portrait) {
+      // Control deck: a dark band under the pitch so thumbs never cover play,
+      // controls sit well above the bottom edge.
+      const deck = Math.round(Phaser.Math.Clamp(height * 0.25, 320, 400));
+      this.drawDeck(width, height, deck);
+      const cy = height - deck * 0.52;
+      stick = { x: 168, y: cy, r: 116, k: 46 };
+      shoot = { x: width - 132, y: cy + 10, size: 172 };
+      bump = { x: shoot.x - 172, y: cy + 52, size: 126 };
+      dash = { x: shoot.x - 92, y: cy - 132, size: 126 };
+      zone = new Phaser.Geom.Rectangle(0, height - deck - 40, width * 0.55, deck + 40);
+    } else {
+      stick = { x: 140, y: height - 130, r: 96, k: 38 };
+      shoot = { x: width - 100, y: height - 128, size: 132 };
+      bump = { x: shoot.x - 138, y: shoot.y + 22, size: 100 };
+      dash = { x: shoot.x - 26, y: shoot.y - 128, size: 100 };
+      zone = new Phaser.Geom.Rectangle(0, height * 0.2, width * 0.48, height * 0.8);
+    }
 
-    this.shootBtn = new SkillButton(this, ox, oy, {
+    this.joystick = new VirtualJoystick(this, stick.x, stick.y, {
+      radius: stick.r,
+      knobRadius: stick.k,
+      zone,
+      isBlocked,
+    });
+    this.joystick.once('start', () => this.hideTutorial());
+
+    this.shootBtn = new SkillButton(this, shoot.x, shoot.y, {
       texture: 'btn-shoot',
-      size: shootSize,
-      label: 'Shoot',
+      size: shoot.size,
+      label: 'SHOOT',
+      rim: 0x4de0ff,
       labelStroke: '#0b2f7a',
       onPress: act('shoot'),
       isBlocked,
     });
-    this.superBtn = new SkillButton(this, ox, oy - shootSize / 2 - sideSize / 2 - gap, {
+    this.superBtn = new SkillButton(this, dash.x, dash.y, {
       texture: 'btn-super',
-      size: sideSize,
-      label: 'Dash',
-      labelColor: '#7adfff',
+      size: dash.size,
+      label: 'DASH',
+      rim: 0x7adfff,
+      labelColor: '#ffffff',
       labelStroke: '#0b3a6a',
       onPress: act('super'),
       isBlocked,
     });
-    this.shoulderBtn = new SkillButton(this, ox - shootSize / 2 - sideSize / 2 - gap, oy, {
+    this.shoulderBtn = new SkillButton(this, bump.x, bump.y, {
       texture: 'btn-shoulder',
-      size: sideSize,
-      label: 'Bump',
-      labelStroke: '#333333',
+      size: bump.size,
+      label: 'BUMP',
+      rim: 0xffd23f,
+      labelStroke: '#4a2a00',
       onPress: act('shoulder'),
       isBlocked,
     });
+  }
+
+  drawDeck(width, height, deck) {
+    const key = `deck-${width}x${deck}`;
+    if (!this.textures.exists(key)) {
+      const tex = this.textures.createCanvas(key, width, deck + 60);
+      const ctx = tex.getContext();
+      const g = ctx.createLinearGradient(0, 0, 0, deck + 60);
+      g.addColorStop(0, 'rgba(6,14,32,0)');
+      g.addColorStop(0.22, 'rgba(6,14,32,0.55)');
+      g.addColorStop(1, 'rgba(4,10,24,0.82)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, width, deck + 60);
+      // thin glowing edge
+      const e = ctx.createLinearGradient(0, 0, width, 0);
+      e.addColorStop(0, 'rgba(77,224,255,0)');
+      e.addColorStop(0.5, 'rgba(77,224,255,0.55)');
+      e.addColorStop(1, 'rgba(77,224,255,0)');
+      ctx.fillStyle = e;
+      ctx.fillRect(0, 58, width, 2);
+      tex.refresh();
+    }
+    this.add.image(0, height - deck - 60, key).setOrigin(0, 0).setDepth(90);
   }
 
   updateControls() {
@@ -363,8 +398,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   createTutorial(width, height) {
-    const hx = 120;
-    const hy = height - 100;
+    const hx = this.joystick.homeX;
+    const hy = this.joystick.homeY;
     this.tutorial = this.add.container(hx, hy).setDepth(150);
 
     const hand = this.add.graphics();
@@ -378,7 +413,7 @@ export class UIScene extends Phaser.Scene {
     hand.fillRect(-9, -6, 18, 14);
 
     const label = this.add
-      .text(0, -100, 'DRAG TO MOVE', {
+      .text(0, -this.joystick.radius - 26, 'DRAG TO MOVE', {
         fontFamily: FONT,
         fontSize: '20px',
         color: '#ffffff',

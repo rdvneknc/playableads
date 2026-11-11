@@ -53,6 +53,8 @@
   <body>
     <div id="backdrop"></div>
     <div id="game-container"></div>
+    <!-- Ad SDKs inject the real MRAID bridge here; in a plain browser this simply 404s -->
+    <script src="mraid.js"></script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
