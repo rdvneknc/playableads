@@ -71,3 +71,20 @@ export function notifyGameReady() {
     /* optional */
   }
 }
+
+// Let the ad turn with the phone and re-fit when the container changes size.
+// Without setOrientationProperties many SDKs lock the ad to the orientation it opened in.
+export function allowRotation(onSize) {
+  const m = window.mraid;
+  if (!m) return;
+  try {
+    m.setOrientationProperties?.({ allowOrientationChange: true, forceOrientation: 'none' });
+  } catch {
+    /* MRAID 1 */
+  }
+  try {
+    m.addEventListener('sizeChange', () => onSize());
+  } catch {
+    /* container without events */
+  }
+}

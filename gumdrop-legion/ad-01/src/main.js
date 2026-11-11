@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from './config.js';
 import { BootScene } from './scenes/BootScene.js';
 import { GameScene } from './scenes/GameScene.js';
-import { startWhenReady, onPauseChange, onVolumeChange, notifyGameReady } from './ad/lifecycle.js';
+import { startWhenReady, onPauseChange, onVolumeChange, notifyGameReady, allowRotation } from './ad/lifecycle.js';
 import { sfx } from './audio/Sfx.js';
 import fontUrl from './assets/font-display.woff';
 
@@ -56,6 +56,7 @@ startWhenReady(async () => {
   window.addEventListener('orientationchange', refreshScale);
   window.addEventListener('resize', refreshScale);
   window.visualViewport?.addEventListener('resize', refreshScale);
+  allowRotation(refreshScale);
 });
 
 onPauseChange((paused) => {

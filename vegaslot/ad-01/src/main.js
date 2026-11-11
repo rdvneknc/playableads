@@ -3,7 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLORS } from './config.js';
 import { BootScene } from './scenes/BootScene.js';
 import { PreloadScene } from './scenes/PreloadScene.js';
 import { GameScene } from './scenes/GameScene.js';
-import { startWhenReady, onPauseChange, onVolumeChange, notifyGameReady } from './ad/lifecycle.js';
+import { startWhenReady, onPauseChange, onVolumeChange, notifyGameReady, allowRotation } from './ad/lifecycle.js';
 import { sfx } from './audio/Sfx.js';
 import fontUrl from './assets/font-display.woff';
 import bgUrl from './assets/background.webp';
@@ -64,6 +64,7 @@ startWhenReady(async () => {
   window.addEventListener('orientationchange', refreshScale);
   window.addEventListener('resize', refreshScale);
   window.visualViewport?.addEventListener('resize', refreshScale);
+  allowRotation(refreshScale);
 });
 
 onPauseChange((paused) => {

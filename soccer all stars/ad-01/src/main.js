@@ -4,6 +4,7 @@ import { PreloadScene } from './scenes/PreloadScene.js';
 import { IntroScene } from './scenes/IntroScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { UIScene } from './scenes/UIScene.js';
+import { startWhenReady, onPauseChange, notifyGameReady, allowRotation } from './ad/lifecycle.js';
 
 // Both orientations: the logical size follows the screen (1280×720 landscape,
 // 720×1280 portrait). Scenes listen for 'orientation' and re-lay themselves out.
@@ -14,10 +15,15 @@ const sizeFor = (portrait) => {
   const aspect = window.innerHeight / Math.max(1, window.innerWidth);
   return [GAME_HEIGHT, Math.round(Math.min(1560, Math.max(GAME_WIDTH, GAME_HEIGHT * aspect)))];
 };
-let portrait = isPortrait();
-const [startW, startH] = sizeFor(portrait);
+let portrait = true;
+let game = null;
 
-const game = new Phaser.Game({
+// Sizes are read only after MRAID is ready and the ad is on screen — before that
+// the webview may still report a placeholder size.
+function createGame() {
+  portrait = isPortrait();
+  const [startW, startH] = sizeFor(portrait);
+  game = new Phaser.Game({
   // ?canvas forces the Canvas renderer (handy for headless testing)
   type: /[?&]canvas\b/.test(location.search) ? Phaser.CANVAS : Phaser.AUTO,
   parent: 'game-container',
@@ -35,9 +41,12 @@ const game = new Phaser.Game({
   render: { antialias: true, roundPixels: false },
   fps: { smoothStep: true },
   scene: [PreloadScene, IntroScene, GameScene, UIScene],
-});
+  });
+  if (import.meta.env.DEV) window.__game = game;
+}
 
 function checkOrientation() {
+  if (!game) return;
   const now = isPortrait();
   if (now === portrait) {
     // same orientation, different phone shape (e.g. browser bars) — keep the portrait height in step
@@ -55,6 +64,7 @@ function checkOrientation() {
 }
 
 function refreshScale() {
+  if (!game) return;
   // iOS/Android need a beat after orientationchange before sizes settle
   checkOrientation();
   requestAnimationFrame(() => {
@@ -71,32 +81,19 @@ function refreshScale() {
   });
 }
 
-// MRAID (AppLovin, ironSource, Unity…): without this many SDKs lock the ad to the
-// orientation it opened in, so turning the phone does nothing.
-function setupMraid() {
-  const m = window.mraid;
-  if (!m) return;
-  const apply = () => {
-    try {
-      m.setOrientationProperties?.({ allowOrientationChange: true, forceOrientation: 'none' });
-    } catch {
-      /* older SDKs */
-    }
-    refreshScale();
-  };
-  if (m.getState?.() === 'loading') m.addEventListener('ready', apply);
-  else apply();
-  m.addEventListener?.('sizeChange', refreshScale);
-  m.addEventListener?.('viewableChange', (viewable) => {
-    if (viewable) game.resume();
-    else game.pause();
-  });
-}
-setupMraid();
+startWhenReady(() => {
+  createGame();
+  notifyGameReady();
+  allowRotation(refreshScale);
+  window.addEventListener('orientationchange', refreshScale);
+  window.addEventListener('resize', refreshScale);
+  window.visualViewport?.addEventListener('resize', refreshScale);
+  window.visualViewport?.addEventListener('scroll', refreshScale);
+});
 
-window.addEventListener('orientationchange', refreshScale);
-window.addEventListener('resize', refreshScale);
-window.visualViewport?.addEventListener('resize', refreshScale);
-window.visualViewport?.addEventListener('scroll', refreshScale);
-
-if (import.meta.env.DEV) window.__game = game;
+// Ad hidden (closed tab, not viewable): freeze the game loop and sound
+onPauseChange((paused) => {
+  if (!game) return;
+  if (paused) game.loop.sleep();
+  else game.loop.wake();
+});
