@@ -105,50 +105,110 @@ export class Pitch {
     g.strokePath();
   }
 
+  // Net texture: diamond mesh with a depth gradient (darker toward the back).
+  netTexture(key, w, h, tint, dir) {
+    const scene = this.scene;
+    if (scene.textures.exists(key)) return key;
+    const tex = scene.textures.createCanvas(key, w, h);
+    const ctx = tex.getContext();
+    const back = dir < 0 ? 0 : w;
+    const g = ctx.createLinearGradient(back, 0, w - back, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0.42)');
+    g.addColorStop(1, 'rgba(0,0,0,0.08)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    const c = Phaser.Display.Color.IntegerToColor(tint);
+    ctx.strokeStyle = `rgba(${c.red},${c.green},${c.blue},0.95)`;
+    ctx.lineWidth = 1.2;
+    const s = 9;
+    ctx.beginPath();
+    for (let i = -h; i < w + h; i += s) {
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + h, h);
+      ctx.moveTo(i, h);
+      ctx.lineTo(i + h, 0);
+    }
+    ctx.stroke();
+    // knots catch the light
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    for (let y = 0; y <= h; y += s) for (let x = (y / s) % 2 ? s / 2 : 0; x <= w; x += s) ctx.fillRect(x - 0.8, y - 0.8, 1.6, 1.6);
+    // side fade so the mesh reads as hanging cloth
+    const v = ctx.createLinearGradient(0, 0, 0, h);
+    v.addColorStop(0, 'rgba(255,255,255,0.18)');
+    v.addColorStop(0.5, 'rgba(255,255,255,0)');
+    v.addColorStop(1, 'rgba(0,0,0,0.18)');
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, w, h);
+    tex.refresh();
+    return key;
+  }
+
   // dir = -1 → net extends left, +1 → net extends right
   drawGoal(mouthX, dir, colors) {
     const scene = this.scene;
     const hw = GOAL.halfWidth;
     const depth = GOAL.depth;
-    const post = GOAL.postRadius * 2;
+    const r = GOAL.postRadius;
     const cy = PITCH.midY;
-
-    const netContainer = scene.add.container(mouthX, cy).setDepth(2);
-    const net = scene.add.graphics();
-    net.fillStyle(0x000000, 0.2);
-    net.fillRoundedRect(dir < 0 ? -depth + 4 : 4, -hw - 2, depth, hw * 2 + 4, 8);
-    net.fillStyle(colors.net, 0.45);
-    net.fillRect(dir < 0 ? -depth : 0, -hw, depth, hw * 2);
-
-    net.lineStyle(1.5, 0xffffff, 0.75);
-    const x0 = dir < 0 ? -depth : 0;
-    for (let x = x0 + 8; x <= x0 + depth - 6; x += 10) {
-      net.lineBetween(x, -hw + 4, x, hw - 4);
-    }
-    for (let y = -hw + 8; y <= hw - 4; y += 11) {
-      net.lineBetween(x0 + 4, y, x0 + depth - 2, y);
-    }
-    netContainer.add(net);
-
-    const frame = scene.add.graphics().setDepth(9);
     const top = cy - hw;
     const bot = cy + hw;
     const backX = mouthX + dir * depth;
 
-    // Side rails + back bar only — no posts standing in front of the mouth
-    this.strokeTube(frame, mouthX, top, backX, top, post, colors.deep, colors.hi);
-    this.strokeTube(frame, mouthX, bot, backX, bot, post, colors.deep, colors.hi);
-    this.strokeTube(frame, backX, top, backX, bot, post - 2, colors.mid, colors.hi);
+    // Team-colour glow pad on the grass behind the goal
+    const pad = scene.add.graphics().setDepth(1);
+    pad.fillStyle(colors.mid, 0.16);
+    pad.fillRoundedRect(Math.min(mouthX, backX) - 10, top - 16, depth + 20, hw * 2 + 32, 14);
+    pad.fillStyle(colors.mid, 0.95);
+    pad.fillRoundedRect(dir < 0 ? backX - 12 : backX + 6, top - 6, 6, hw * 2 + 12, 3);
+    pad.fillStyle(0xffffff, 0.6);
+    pad.fillRect(dir < 0 ? backX - 11 : backX + 7, top, 2, hw * 2);
 
-    for (const [jx, jy] of [
-      [backX, top],
-      [backX, bot],
-    ]) {
+    // Drop shadow of the whole frame (light from top-left)
+    const sh = scene.add.graphics().setDepth(1);
+    sh.fillStyle(0x000000, 0.28);
+    sh.fillRoundedRect(Math.min(mouthX, backX) + 6, top + 8, depth, hw * 2, 10);
+
+    const netContainer = scene.add.container(mouthX, cy).setDepth(2);
+    const key = this.netTexture(`net-${dir}`, depth, hw * 2, colors.net, dir);
+    netContainer.add(scene.add.image(dir < 0 ? -depth / 2 : depth / 2, 0, key));
+
+    const frame = scene.add.graphics().setDepth(9);
+    const tube = (x1, y1, x2, y2, t) => {
+      frame.lineStyle(t + 4, 0x0b1020, 0.55);
+      frame.lineBetween(x1, y1 + 2, x2, y2 + 2);
+      frame.lineStyle(t, colors.deep, 1);
+      frame.lineBetween(x1, y1, x2, y2);
+      frame.lineStyle(t * 0.55, colors.mid, 1);
+      frame.lineBetween(x1, y1 - t * 0.12, x2, y2 - t * 0.12);
+      frame.lineStyle(Math.max(1.5, t * 0.2), colors.hi, 0.9);
+      frame.lineBetween(x1, y1 - t * 0.26, x2, y2 - t * 0.26);
+    };
+    tube(mouthX, top, backX, top, r * 1.6);
+    tube(mouthX, bot, backX, bot, r * 1.6);
+    tube(backX, top, backX, bot, r * 1.2);
+
+    // White goalposts at the mouth (visual only — the colliders are unchanged)
+    for (const py of [top, bot]) {
+      frame.fillStyle(0x000000, 0.35);
+      frame.fillCircle(mouthX + 3, py + 4, r + 3);
+      frame.fillStyle(0xc9d3e0, 1);
+      frame.fillCircle(mouthX, py, r + 2);
+      frame.fillStyle(0xffffff, 1);
+      frame.fillCircle(mouthX - 1, py - 1, r);
       frame.fillStyle(colors.mid, 1);
-      frame.fillCircle(jx, jy, GOAL.postRadius * 1.3);
-      frame.fillStyle(colors.hi, 0.8);
-      frame.fillCircle(jx - 2, jy - 2, GOAL.postRadius * 0.45);
+      frame.fillCircle(mouthX, py, r * 0.45);
+      frame.fillStyle(0xffffff, 0.95);
+      frame.fillCircle(mouthX - r * 0.45, py - r * 0.45, r * 0.3);
     }
+    for (const py of [top, bot]) {
+      frame.fillStyle(colors.deep, 1);
+      frame.fillCircle(backX, py, r * 1.05);
+      frame.fillStyle(colors.hi, 0.9);
+      frame.fillCircle(backX - 1.5, py - 1.5, r * 0.4);
+    }
+    // goal line in the mouth, bright
+    frame.lineStyle(2, 0xffffff, 0.9);
+    frame.lineBetween(mouthX, top + r + 2, mouthX, bot - r - 2);
 
     return netContainer;
   }

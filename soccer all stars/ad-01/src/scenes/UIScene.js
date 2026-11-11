@@ -3,6 +3,7 @@ import { FONT } from '../config.js';
 import { VirtualJoystick } from '../ui/VirtualJoystick.js';
 import { SkillButton } from '../ui/SkillButton.js';
 import { EndCard } from '../ui/EndCard.js';
+import { panelTexture, pillButton, gradText } from '../ui/Skin.js';
 // HUD, controls, pause, banners and end card. Landscape layout.
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -209,80 +210,66 @@ export class UIScene extends Phaser.Scene {
   createPauseOverlay(width, height) {
     const cx = width / 2;
     const cy = height / 2;
-    const panelW = Math.min(420, width - 160);
-    const panelH = 280;
-    const px = cx - panelW / 2;
+    const panelW = Math.min(440, width - 160);
+    const panelH = 300;
     const py = cy - panelH / 2;
 
-    const dim = this.add.rectangle(cx, cy, width, height, 0x04160c, 0.72).setInteractive();
+    const dim = this.add.rectangle(cx, cy, width, height, 0x050b1c, 0.74).setInteractive();
+    // soft spotlight behind the panel
+    const glow = this.add.graphics();
+    for (let i = 6; i > 0; i--) {
+      glow.fillStyle(0x2a7bff, 0.035);
+      glow.fillEllipse(cx, cy, panelW + i * 70, panelH + i * 40);
+    }
 
-    const panel = this.add.graphics();
-    panel.fillStyle(0x000000, 0.35);
-    panel.fillRoundedRect(px + 6, py + 8, panelW, panelH, 28);
-    panel.fillStyle(0x0d2818, 0.98);
-    panel.fillRoundedRect(px, py, panelW, panelH, 28);
-    panel.fillStyle(0xffffff, 0.06);
-    panel.fillRoundedRect(px + 14, py + 12, panelW - 28, 64, 18);
-    panel.lineStyle(4, 0x5cff9a, 0.9);
-    panel.strokeRoundedRect(px, py, panelW, panelH, 28);
+    panelTexture(this, 'pause-panel', panelW, panelH, { rim: '#5cff9a', top: '#123a2a', bottom: '#071a14', header: 112 });
+    const panel = this.add.image(cx, cy + 6, 'pause-panel');
+    panel.setInteractive(); // swallow taps on the panel itself
 
-    const title = this.add
-      .text(cx, py + 58, 'PAUSED', {
-        fontFamily: FONT,
-        fontSize: '44px',
-        color: '#ffffff',
-        stroke: '#062816',
-        strokeThickness: 8,
-      })
-      .setOrigin(0.5);
+    // pause badge sitting on the top edge
+    const badge = this.add.graphics();
+    badge.fillStyle(0x000000, 0.35);
+    badge.fillCircle(cx + 2, py + 4, 34);
+    badge.fillStyle(0x0b3d24, 1);
+    badge.fillCircle(cx, py, 34);
+    badge.fillStyle(0x5cff9a, 1);
+    badge.fillCircle(cx, py, 29);
+    badge.fillStyle(0xffffff, 0.35);
+    badge.fillEllipse(cx - 4, py - 12, 34, 14);
+    badge.fillStyle(0x0b3d24, 1);
+    badge.fillRoundedRect(cx - 12, py - 13, 8, 26, 3);
+    badge.fillRoundedRect(cx + 4, py - 13, 8, 26, 3);
+
+    const title = gradText(this, cx, py + 64, 'PAUSED', 46, ['#ffffff', '#d9ffe6', '#5cff9a'], '#05210f');
 
     const sub = this.add
-      .text(cx, py + 108, 'Take a breath — match on hold', {
+      .text(cx, py + 124, 'Take a breath — the match is on hold', {
         fontFamily: 'Arial, sans-serif',
         fontSize: '18px',
-        color: '#b7e9c8',
+        fontStyle: 'bold',
+        color: '#bfeed0',
       })
       .setOrigin(0.5);
 
-    const btnW = 220;
-    const btnH = 64;
-    const bx = cx - btnW / 2;
-    const by = cy + 28;
-    const resumeBtn = this.add.container(cx, by + btnH / 2);
-    const resumeGfx = this.add.graphics();
-    resumeGfx.fillStyle(0x087a3a, 1);
-    resumeGfx.fillRoundedRect(-btnW / 2, -btnH / 2 + 5, btnW, btnH, 32);
-    resumeGfx.fillStyle(0x2fd35f, 1);
-    resumeGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 32);
-    resumeGfx.fillStyle(0xffffff, 0.22);
-    resumeGfx.fillRoundedRect(-btnW / 2 + 12, -btnH / 2 + 6, btnW - 24, 22, 12);
-    const resumeText = this.add
-      .text(0, 0, '▶  RESUME', {
-        fontFamily: FONT,
-        fontSize: '26px',
-        color: '#ffffff',
-        stroke: '#0a5a22',
-        strokeThickness: 5,
-      })
-      .setOrigin(0.5);
-    resumeBtn.add([resumeGfx, resumeText]);
-    resumeBtn.setSize(btnW, btnH).setInteractive({ useHandCursor: true });
-    resumeBtn.on('pointerdown', () => this.setPaused(false));
-    resumeBtn.on('pointerover', () => resumeBtn.setScale(1.04));
-    resumeBtn.on('pointerout', () => resumeBtn.setScale(1));
+    const resumeBtn = pillButton(this, cx, py + 198, '▶  RESUME', {
+      w: 250,
+      h: 70,
+      size: 30,
+      onTap: () => this.setPaused(false),
+    });
 
     const hint = this.add
-      .text(cx, py + panelH - 36, 'or tap outside to continue', {
+      .text(cx, py + panelH - 22, 'or tap anywhere to continue', {
         fontFamily: 'Arial, sans-serif',
         fontSize: '15px',
-        color: '#7aa88a',
+        color: '#7fb595',
       })
       .setOrigin(0.5);
 
     dim.on('pointerdown', () => this.setPaused(false));
 
     this.pauseLayer = this.add
-      .container(0, 0, [dim, panel, title, sub, resumeBtn, hint])
+      .container(0, 0, [dim, glow, panel, badge, title, sub, resumeBtn, hint])
       .setDepth(300)
       .setVisible(false)
       .setAlpha(0);
@@ -312,6 +299,7 @@ export class UIScene extends Phaser.Scene {
         repeat: -1,
         ease: 'Sine.InOut',
       });
+      this.time.delayedCall(260, () => this.paused && this.resumeBtn.sweep?.());
       this.scene.pause('Game');
     } else {
       this.tweens.killTweensOf(this.resumeBtn);

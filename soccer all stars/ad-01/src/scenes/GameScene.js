@@ -329,7 +329,8 @@ export class GameScene extends Phaser.Scene {
     if (actor.boosting) return fail('busy');
     if (!actor.cooldowns.super.ready) return fail('cooldown');
 
-    actor.cooldowns.super.trigger();
+    // cooldown counts from when the boost ends
+    actor.cooldowns.super.trigger(BOOST.durationMs + BOOST.cooldownMs);
     actor.activateBoost(BOOST.durationMs, BOOST.speedMult);
     sfx.whoosh();
     sfx.superKick();
