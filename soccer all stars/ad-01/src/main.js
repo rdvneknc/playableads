@@ -33,6 +33,29 @@ function refreshScale() {
   });
 }
 
+// MRAID (AppLovin, ironSource, Unity…): without this many SDKs lock the ad to the
+// orientation it opened in, so turning the phone does nothing.
+function setupMraid() {
+  const m = window.mraid;
+  if (!m) return;
+  const apply = () => {
+    try {
+      m.setOrientationProperties?.({ allowOrientationChange: true, forceOrientation: 'none' });
+    } catch {
+      /* older SDKs */
+    }
+    refreshScale();
+  };
+  if (m.getState?.() === 'loading') m.addEventListener('ready', apply);
+  else apply();
+  m.addEventListener?.('sizeChange', refreshScale);
+  m.addEventListener?.('viewableChange', (viewable) => {
+    if (viewable) game.resume();
+    else game.pause();
+  });
+}
+setupMraid();
+
 window.addEventListener('orientationchange', refreshScale);
 window.addEventListener('resize', refreshScale);
 window.visualViewport?.addEventListener('resize', refreshScale);
