@@ -106,6 +106,45 @@ export class Hud {
     this.raidFoes.textContent = foes;
   }
 
+  // info cards over open build plots
+  cards(list) {
+    this.cardEls ||= new Map();
+    const seen = new Set();
+    for (const c of list) {
+      seen.add(c.id);
+      let e = this.cardEls.get(c.id);
+      if (!e) {
+        e = el('div', 'card', this.layer, '<b></b><span></span><div class="pbar"><i></i></div>');
+        e.b = e.querySelector('b');
+        e.s = e.querySelector('span');
+        e.i = e.querySelector('i');
+        this.cardEls.set(c.id, e);
+      }
+      e.b.textContent = c.name;
+      e.s.textContent = c.desc;
+      e.i.style.width = `${c.k * 100}%`;
+      e.classList.toggle('main', !!c.main);
+      e.classList.toggle('building', c.k > 0);
+      e.style.display = 'block';
+      e.style.transform = `translate(${c.x}px, ${c.y}px) translate(-50%, -100%)`;
+    }
+    for (const [id, e] of this.cardEls) if (!seen.has(id)) e.style.display = 'none';
+  }
+
+  // arrow on the screen edge toward an off-screen goal (dx, dy in NDC, y down)
+  pointer(visible, dx = 0, dy = 0) {
+    if (!this.ptr) this.ptr = el('div', 'ptr', this.root, '<i></i>');
+    this.ptr.style.display = visible ? 'block' : 'none';
+    if (!visible) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const s = Math.max(Math.abs(dx) / 0.86, Math.abs(dy) / 0.8, 1e-3);
+    const x = (dx / s) * 0.5 * w + w / 2;
+    const y = Math.max(110, Math.min(h - 60, (dy / s) * 0.5 * h + h / 2));
+    const a = Math.atan2(dy * h, dx * w);
+    this.ptr.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${a}rad)`;
+  }
+
   timer(visible, secs, k) {
     this.clock.classList.toggle('show', visible);
     if (!visible) return;
@@ -170,5 +209,6 @@ export class Hud {
     [...this.layer.querySelectorAll('.float')].forEach((f) => f.remove());
     this.raidBar(false);
     this.tipKey = '';
+    this.cards([]);
   }
 }

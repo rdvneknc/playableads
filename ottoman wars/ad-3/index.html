@@ -107,6 +107,22 @@
       .purse b { font-weight: 400; min-width: 22px; }
       .purse.bump i { animation: bump .25s ease-out; }
 
+      .ptr { position: absolute; left: 0; top: 0; display: none; width: 46px; height: 46px; border-radius: 50%; background: rgba(36,22,10,.75); border: 3px solid #ffd23f; animation: pulse 1s ease-in-out infinite; }
+      .ptr i { position: absolute; left: 15px; top: 11px; border: 12px solid transparent; border-left: 18px solid #ffd23f; border-right: 0; }
+
+      /* plot info cards */
+      .card {
+        position: absolute; left: 0; top: 0; display: none; min-width: 130px; padding: 6px 10px 7px; border-radius: 12px; text-align: center;
+        background: rgba(36,22,10,.82); border: 2px solid rgba(255,230,170,.75); box-shadow: 0 4px 12px rgba(0,0,0,.3); will-change: transform; opacity: .85;
+      }
+      .card.main { opacity: 1; border-color: #ffd23f; }
+      .card b { display: block; font-weight: 400; font-size: 16px; color: #ffe2a0; letter-spacing: .5px; }
+      .card span { display: block; font: 600 12px/1.2 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #f4ead6; margin-top: 2px; }
+      .card .pbar { display: none; height: 6px; margin-top: 5px; border-radius: 4px; background: rgba(0,0,0,.45); overflow: hidden; }
+      .card.building .pbar { display: block; }
+      .card .pbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8fd45a, #4fae3a); }
+      .float.coin { font-size: 22px; color: #ffe06a; text-shadow: 0 2px 0 #7a4a06; }
+
       /* enemy countdown */
       .clock {
         position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 58px); transform: translate(-50%, -20px); opacity: 0; transition: .35s;

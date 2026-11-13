@@ -285,6 +285,7 @@ export class Fx {
     this.arrows = new Arrows(scene);
     this.boulders = new Arrows(scene, 16, new Builder().add(new THREE.DodecahedronGeometry(0.45, 0), 0x8a6a4a).build(), false);
     this.boulders.mesh.castShadow = true;
+    this.balls = new Arrows(scene, 16, new Builder().add(new THREE.SphereGeometry(0.22, 10, 8), 0x2a2a2e).build(), false);
     this.confetti = new Confetti(scene);
   }
 
@@ -340,6 +341,7 @@ export class Fx {
     this.debris.update(dt);
     this.arrows.update(dt);
     this.boulders.update(dt);
+    this.balls.update(dt);
     this.confetti.update(dt);
   }
 }

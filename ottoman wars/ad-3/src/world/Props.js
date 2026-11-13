@@ -1,7 +1,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { Builder, P } from './geom.js';
 import { roundRect } from './Environment.js';
-import { COLORS as C, FONT_UI, TEXT, MAP } from '../config.js';
+import { COLORS as C, FONT_UI, TEXT, MAP, INFO } from '../config.js';
 
 const vmat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 });
 const mesh = (geo, shadow = true) => {
@@ -124,7 +124,7 @@ export class Pad {
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(40,20,6,0.9)';
     if (!this.type) return this.drawBattle(ctx);
-    const label = TEXT.pads[this.def.kind];
+    const label = (INFO[this.def.kind] || { short: '' }).short;
     ctx.strokeText(label, 128, 62);
     ctx.fillStyle = '#ffe9b0';
     ctx.fillText(label, 128, 62);
@@ -205,9 +205,9 @@ export class Pad {
     ctx.font = `46px ${FONT_UI}`;
     ctx.lineWidth = 9;
     ctx.strokeStyle = 'rgba(60,8,8,0.95)';
-    ctx.strokeText(TEXT.pads.battle, 128, 196);
+    ctx.strokeText(TEXT.battle, 128, 196);
     ctx.fillStyle = '#ffe2a0';
-    ctx.fillText(TEXT.pads.battle, 128, 196);
+    ctx.fillText(TEXT.battle, 128, 196);
     this.tex.needsUpdate = true;
   }
 
