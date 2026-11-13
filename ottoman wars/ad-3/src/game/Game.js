@@ -1,9 +1,9 @@
 import * as THREE from '../vendor/three.module.min.js';
-import { AD, COLORS as C, MAP, PADS, PLAYER, PRODUCE, RAID, TEXT, WORKER } from '../config.js';
-import { Environment } from '../world/Environment.js';
+import { AD, BATTLE_PAD, BATTLE_READY, COLORS as C, FONT_UI, MAP, PADS, PLAYER, PRODUCE, RAID, TEXT, WORKER } from '../config.js';
+import { Environment, roundRect } from '../world/Environment.js';
 import { MODELS } from '../world/Models.js';
 import { UnitBatch } from '../world/UnitBatch.js';
-import { Guide, Items, Pad, makeCatapult, makeGate, makeQuarry, makeTower, makeTreasury, makeWall } from '../world/Props.js';
+import { Guide, Items, Pad, makeCatapult, makeGate, makeGrove, makeMarket, makeQuarry, makeWall, upgradeWall } from '../world/Props.js';
 import { Fx } from '../fx/Fx.js';
 import { sfx } from '../audio/Sfx.js';
 
@@ -14,8 +14,45 @@ const yawFor = (dx, dz) => Math.atan2(-dx, -dz);
 const dist2 = (ax, az, bx, bz) => (ax - bx) ** 2 + (az - bz) ** 2;
 const easeOutBack = (k) => 1 + 2.70158 * (k - 1) ** 3 + 1.70158 * (k - 1) ** 2;
 
-const WALL_HALF = 14;
+const WALL_HALF = 15;
 const GATE_HALF = 3.4;
+const WALL_LEN = WALL_HALF - GATE_HALF;
+const PILES = { stone: MAP.quarry.pile, wood: MAP.grove.pile };
+
+// a flat sign on the ground (SELL spot)
+function groundSign(text, color) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = color;
+  roundRect(ctx, 10, 10, 236, 236, 40);
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+  ctx.fillStyle = '#ffcf3a';
+  ctx.strokeStyle = '#7a4a06';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(128, 100, 46, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(128, 100, 30, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.font = `52px ${FONT_UI}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = 'rgba(30,14,4,.9)';
+  ctx.strokeText(text, 128, 198);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, 128, 198);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.8), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2;
+  return m;
+}
 
 export class Game {
   constructor(renderer, hud, { onEnd }) {
@@ -27,12 +64,12 @@ export class Game {
     this.env = new Environment(this.scene);
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.04 });
     this.batches = {
-      pasha: new UnitBatch(this.scene, MODELS.pasha(), 1, mat, { scale: 1.08 }),
+      pasha: new UnitBatch(this.scene, MODELS.pasha(), 1, mat, { scale: 1.1 }),
       worker: new UnitBatch(this.scene, MODELS.worker(), 12, mat),
-      crew: new UnitBatch(this.scene, MODELS.crew(), 4, mat),
+      crew: new UnitBatch(this.scene, MODELS.crew(), 6, mat),
       sage: new UnitBatch(this.scene, MODELS.sage(), 1, mat, { scale: 1.05 }),
-      enemy: new UnitBatch(this.scene, MODELS.enemy(), 80, mat),
-      archer: new UnitBatch(this.scene, MODELS.archer(), 4, mat),
+      enemy: new UnitBatch(this.scene, MODELS.enemy(), 90, mat),
+      archer: new UnitBatch(this.scene, MODELS.archer(), 8, mat),
     };
     this.items = new Items(this.scene);
     this.fx = new Fx(this.scene);
@@ -43,35 +80,41 @@ export class Game {
     this.camPos = new THREE.Vector3(0, 40, 40);
     this.camLook = new THREE.Vector3(0, 0, 0);
 
-    // static camp pieces
     const quarry = makeQuarry();
     quarry.position.set(MAP.quarry.x, 0, MAP.quarry.z);
-    quarry.rotation.y = 0.5;
+    quarry.rotation.y = 0.6;
     this.scene.add(quarry);
-    const treasury = makeTreasury();
-    treasury.position.set(MAP.treasury.x, 0, MAP.treasury.z - 1.2);
-    treasury.rotation.y = -0.45;
-    this.scene.add(treasury);
+    const grove = makeGrove();
+    grove.position.set(MAP.grove.x, 0, MAP.grove.z);
+    this.scene.add(grove);
     this.gate = makeGate();
     this.gate.position.set(0, 0, MAP.wallZ);
     this.scene.add(this.gate);
+    this.market = makeMarket();
+    this.market.position.set(MAP.market.x, 0, MAP.market.z);
+    this.scene.add(this.market);
+    this.sellSign = groundSign(TEXT.sell, 'rgba(40,120,60,0.8)');
+    this.sellSign.position.set(MAP.market.sell[0], 0.05, MAP.market.sell[1]);
+    this.scene.add(this.sellSign);
 
-    // buildings unlocked by pads (hidden until built)
-    const wallLen = WALL_HALF - GATE_HALF;
-    this.buildings = {
-      wallL: makeWall(wallLen),
-      wallR: makeWall(wallLen),
-      catapult: makeCatapult(),
-      tower: makeTower(),
-    };
-    this.buildings.wallL.position.set(-(GATE_HALF + wallLen / 2), 0, MAP.wallZ);
-    this.buildings.wallR.position.set(GATE_HALF + wallLen / 2, 0, MAP.wallZ);
-    for (const b of Object.values(this.buildings)) this.scene.add(b);
+    this.walls = { wallL: makeWall(WALL_LEN), wallR: makeWall(WALL_LEN) };
+    this.walls.wallL.position.set(-(GATE_HALF + WALL_LEN / 2), 0, MAP.wallZ);
+    this.walls.wallR.position.set(GATE_HALF + WALL_LEN / 2, 0, MAP.wallZ);
+    Object.values(this.walls).forEach((w) => this.scene.add(w));
+    this.catapults = {};
+    for (const id of ['catapult1', 'catapult2']) {
+      const def = PADS.find((p) => p.id === id);
+      const c = makeCatapult();
+      c.position.set(def.x, 0, def.z - 1.2);
+      this.scene.add(c);
+      this.catapults[id] = c;
+    }
+    this.battlePad = new Pad(this.scene, { id: 'battle', kind: 'battle', x: BATTLE_PAD.x, z: BATTLE_PAD.z, need: {} });
 
-    // obstacles the Pasha walks around
     this.obstacles = [
-      { x: MAP.quarry.x - 0.5, z: MAP.quarry.z - 1.2, r: 3.0 },
-      { x: MAP.treasury.x, z: MAP.treasury.z - 1.2, r: 2.6 },
+      { x: MAP.quarry.x, z: MAP.quarry.z - 0.6, r: 3.0 },
+      { x: MAP.grove.x + 1, z: MAP.grove.z, r: 2.6 },
+      { x: MAP.market.x, z: MAP.market.z - 0.5, r: 2.4 },
       { x: MAP.sage[0], z: MAP.sage[1], r: 0.7 },
       { x: -2.6, z: MAP.wallZ, r: 1.5 },
       { x: 2.6, z: MAP.wallZ, r: 1.5 },
@@ -92,38 +135,60 @@ export class Game {
     this.flyers = [];
     this.pasha = { x: MAP.start[0], z: MAP.start[1], yaw: Math.PI, ph: 0, moving: false, stack: [], pending: 0, pickT: 0, dropT: 0, gold: 0 };
     this.input = { x: 0, z: 0 };
-    this.piles = { stone: 8, gold: 6 };
-    this.prodT = { stone: 0, gold: 0 };
+    this.piles = { stone: 6, wood: 4 };
+    this.coinPile = 0;
+    this.coinShown = 0;
+    this.sellQueue = 0;
+    this.sellT = 0;
     this.diggers = [
-      { x: MAP.quarry.x + 1.6, z: MAP.quarry.z + 0.6, yaw: 2.2, ph: 0 },
-      { x: MAP.quarry.x - 1.4, z: MAP.quarry.z + 1.6, yaw: 2.6, ph: 2 },
+      { x: MAP.quarry.x + 2.0, z: MAP.quarry.z + 0.8, yaw: 2.1, ph: 0, t: rnd(0, 1) },
+      { x: MAP.quarry.x - 0.6, z: MAP.quarry.z + 2.5, yaw: 2.9, ph: 2, t: rnd(0, 1) },
     ];
+    this.cutters = [
+      { x: MAP.grove.x - 1.4, z: MAP.grove.z - 1.4, yaw: -2.0, ph: 0, t: rnd(0, 1) },
+      { x: MAP.grove.x - 0.6, z: MAP.grove.z + 2.0, yaw: -1.2, ph: 1, t: rnd(0, 1) },
+    ];
+    this.prodMul = 1;
     this.workers = [];
     this.crew = [];
     this.archers = [];
     this.enemies = [];
     this.raidQueued = false;
+    this.scoutsSent = false;
+    this.sageSay = null;
+    this.wallMax = RAID.wallHp;
     this.wallHp = RAID.wallHp;
-    this.catT = 0.6;
-    this.arrowT = 0.4;
     for (const p of this.pads || []) this.scene.remove(p.plane);
     this.pads = PADS.map((def) => new Pad(this.scene, def));
     this.built = {};
-    for (const [id, b] of Object.entries(this.buildings)) {
-      b.visible = false;
-      b.scale.set(1, 1, 1);
-      if (id === 'catapult') b.arm.rotation.x = 0.55;
+    for (const w of Object.values(this.walls)) {
+      w.visible = false;
+      w.scale.set(1, 1, 1);
+      if (w.lv2) {
+        w.remove(w.lv2);
+        w.lv2 = null;
+        w.children.forEach((c) => (c.visible = true));
+      }
     }
-    this.buildings.catapult.position.set(PADS.find((p) => p.id === 'catapult').x, 0, PADS.find((p) => p.id === 'catapult').z);
-    this.buildings.tower.position.set(PADS.find((p) => p.id === 'tower').x, 0, PADS.find((p) => p.id === 'tower').z);
+    for (const c of Object.values(this.catapults)) {
+      c.visible = false;
+      c.arm.rotation.x = 0.55;
+      c.t = rnd(0.2, 1);
+    }
+    this.market.visible = false;
+    this.sellSign.visible = false;
+    this.battlePad.plane.visible = false;
+    this.battlePad.active = false;
+    this.battlePad.done = false;
+    this.battleHold = 0;
     this.gate.door.visible = true;
     this.hud.reset();
     this.hud.coins(0);
     this.hud.showTitle(true);
     this.hud.showHand(false);
     this.hud.showCta(false);
-    this.camPos.set(0, 34, 40);
-    this.camLook.set(0, 0, 0);
+    this.camPos.set(0, 36, 40);
+    this.camLook.set(0, 0, 2);
     this.shake = 0;
     this.guide.set(null);
     this.activatePads();
@@ -132,12 +197,23 @@ export class Game {
   activatePads() {
     for (const p of this.pads) {
       if (p.active || p.done) continue;
-      if (!p.def.after || this.built[p.def.after]) p.show();
+      if (!p.def.after || p.def.after.every((id) => this.built[id])) {
+        p.show();
+        if (this.state === 'play') sfx.tap();
+      }
+    }
+    if (!this.battlePad.active && BATTLE_READY.every((id) => this.built[id]) && this.state === 'play') {
+      this.battlePad.show();
     }
   }
 
+  get activePads() {
+    return this.pads.filter((p) => p.active && !p.done);
+  }
+
+  // the pad the tutorial points at: first open one in build order
   get currentPad() {
-    return this.pads.find((p) => p.active && !p.done);
+    return this.activePads[0];
   }
 
   /* ───────────────────────── input ───────────────────────── */
@@ -175,23 +251,23 @@ export class Game {
   }
 
   stackTop(c) {
-    // world position of the next slot on a carrier's back
-    const back = c === this.pasha ? 0.42 : 0.36;
-    const base = c === this.pasha ? 1.25 : 1.58;
-    const sx = -Math.sin(c.yaw) * -back;
-    const sz = -Math.cos(c.yaw) * -back;
-    let h = base;
+    const isP = c === this.pasha;
+    const back = isP ? 0.42 : 0.36;
+    let h = isP ? 1.25 : 1.58;
     for (const t of c.stack) h += this.items.h[t] + 0.02;
-    return new THREE.Vector3(c.x + sx, h, c.z + sz);
+    return new THREE.Vector3(c.x + Math.sin(c.yaw) * back, h, c.z + Math.cos(c.yaw) * back);
   }
 
   pilePos(type, i) {
-    const [px, pz] = type === 'stone' ? MAP.quarry.pile : MAP.treasury.pile;
-    const layer = Math.floor(i / 6);
-    const k = i % 6;
-    const x = px + ((k % 3) - 1) * 0.62;
-    const z = pz + (Math.floor(k / 3) - 0.5) * 0.5;
-    return new THREE.Vector3(x, 0.16 + layer * (this.items.h[type] + 0.02), z);
+    const [px, pz] = type === 'gold' ? MAP.market.coins : PILES[type];
+    const per = type === 'gold' ? 9 : 6;
+    const cols = 3;
+    const layer = Math.floor(i / per);
+    const k = i % per;
+    const rows = per / cols;
+    const x = px + ((k % cols) - 1) * (type === 'gold' ? 0.5 : 0.62);
+    const z = pz + (Math.floor(k / cols) - (rows - 1) / 2) * (type === 'gold' ? 0.32 : 0.5);
+    return new THREE.Vector3(x, 0.12 + layer * (this.items.h[type] + 0.02), z);
   }
 
   fly(type, from, toFn, dur, onArrive) {
@@ -199,36 +275,70 @@ export class Game {
   }
 
   build(pad) {
-    const id = pad.def.id;
+    const def = pad.def;
+    const id = def.id;
     this.built[id] = true;
     sfx.gateGood(true);
-    const p = this.project(pad.def.x, 2.5, pad.def.z);
-    this.hud.float(p.x, p.y, pad.def.kind === 'hire' ? '+1 WORKER' : `${TEXT.pads[pad.def.kind]}!`, 'good');
-    this.fx.sparkle(pad.def.x, 0, pad.def.z, 0xffe9a0, 30);
-    this.fx.bigDust(pad.def.x, 0.2, pad.def.z, 14, 2.2, 0xe6c79a);
+    const p = this.project(def.x, 2.5, def.z);
+    const label = def.kind === 'hire' ? '+1 WORKER' : def.kind === 'wallUp' ? 'WALLS LV2!' : def.kind === 'quarryUp' ? '+1 DIGGER' : `${TEXT.pads[def.kind]}!`;
+    this.hud.float(p.x, p.y, label, 'good');
+    this.fx.sparkle(def.x, 0, def.z, 0xffe9a0, 30);
+    this.fx.bigDust(def.x, 0.2, def.z, 12, 2.2, 0xe6c79a);
     this.shake = Math.max(this.shake, 0.25);
-    if (pad.def.kind === 'hire') {
-      const w = { x: MAP.treasury.x - 2, z: MAP.treasury.z + 2, yaw: 0, ph: 0, stack: [], task: 'toPile', t: 0, spawn: 0 };
-      this.workers.push(w);
-    } else {
-      const b = this.buildings[id];
-      b.visible = true;
-      b.scale.set(1, 0.01, 1);
-      this.tween(0.55, (k) => {
-        const s = easeOutBack(k);
-        b.scale.set(1 + (1 - k) * 0.15, Math.max(0.01, s), 1 + (1 - k) * 0.15);
-      });
-      if (id === 'catapult') {
-        this.crew = [
-          { x: b.position.x - 1.6, z: b.position.z + 0.6, yaw: Math.PI * 0.5, ph: 0 },
-          { x: b.position.x + 1.6, z: b.position.z + 1.4, yaw: -Math.PI * 0.6, ph: 1 },
-        ];
+    const pop = (g) => {
+      g.visible = true;
+      g.scale.set(1, 0.01, 1);
+      this.tween(0.55, (k) => g.scale.set(1 + (1 - k) * 0.12, Math.max(0.01, easeOutBack(k)), 1 + (1 - k) * 0.12));
+    };
+    switch (def.kind) {
+      case 'wall':
+        pop(this.walls[id]);
+        this.fx.bigDust(this.walls[id].position.x, 0.5, MAP.wallZ, 18, 5, 0xe6c79a);
+        break;
+      case 'market':
+        pop(this.market);
+        this.sellSign.visible = true;
+        this.crew.push({ x: MAP.market.x + 0.4, z: MAP.market.z - 0.3, yaw: Math.PI, ph: 0, role: 'merchant' });
+        break;
+      case 'hire': {
+        const type = id === 'hire1' ? 'stone' : 'wood';
+        this.workers.push({ x: def.x, z: def.z, yaw: Math.PI, ph: 0, stack: [], type, task: 'toPile', t: 0, spawn: 0 });
+        break;
       }
-      if (id === 'tower') {
-        this.archers = b.archerSpots.map((s) => ({ x: b.position.x + s.x, y: s.y, z: b.position.z + s.z, ph: rnd(0, 6) }));
+      case 'archers': {
+        const side = id === 'archersL' ? -1 : 1;
+        for (const off of [5.2, 8.9, 12.6]) this.archers.push({ x: side * off, side, ph: rnd(0, 6), t: rnd(0, RAID.arrowEvery), spawn: 0 });
+        break;
       }
+      case 'catapult': {
+        const c = this.catapults[id];
+        pop(c);
+        this.crew.push({ x: c.position.x - 1.6, z: c.position.z + 0.8, yaw: Math.PI * 0.5, ph: 0, role: 'crew' });
+        this.crew.push({ x: c.position.x + 1.6, z: c.position.z + 1.6, yaw: -Math.PI * 0.6, ph: 1, role: 'crew' });
+        break;
+      }
+      case 'quarryUp':
+        this.diggers.push({ x: MAP.quarry.x + 1.4, z: MAP.quarry.z + 2.6, yaw: 2.5, ph: 1, t: 0, spawn: 0 });
+        this.prodMul = 0.8;
+        break;
+      case 'wallUp':
+        for (const w of Object.values(this.walls)) {
+          const add = upgradeWall(w, WALL_LEN);
+          add.scale.set(1, 0.01, 1);
+          this.tween(0.6, (k) => add.scale.set(1, Math.max(0.01, easeOutBack(k)), 1));
+          this.fx.bigDust(w.position.x, 3, MAP.wallZ, 16, 5, 0xe6c79a);
+        }
+        this.wallMax = RAID.wallHpUp;
+        this.wallHp = RAID.wallHpUp;
+        break;
+      default:
     }
     this.tween(0.4, () => {}, () => this.activatePads());
+    // first archers on the wall → a few scouts test the defences
+    if (id === 'archersL' && !this.scoutsSent) {
+      this.scoutsSent = true;
+      this.tween(2.5, () => {}, () => this.spawnScouts());
+    }
   }
 
   /* ───────────────────────── update ───────────────────────── */
@@ -257,23 +367,27 @@ export class Game {
       if (this.stateT > 5) this.begin();
     } else this.hud.showHand(st === 'play' && !this.moved && this.stateT > 0.2);
 
-    if (st === 'play' || st === 'raid' || st === 'raidIntro') this.playT += dt;
+    const live = st === 'play' || st === 'raid' || st === 'raidIntro';
+    if (live) this.playT += dt;
     this.produce(dt);
-    if (st === 'play' || st === 'raid' || st === 'raidIntro') this.movePasha(dt);
-    if (st === 'play') {
+    if (live) {
+      this.movePasha(dt);
       this.handleStations(dt);
-      if (this.pads.every((p) => p.done) && !this.raidQueued) this.queueRaid(1.6);
-      if (this.playT * 1000 > AD.attackAtMs && !this.raidQueued) this.queueRaid(0.2);
+      this.updateWorkers(dt);
     }
-    if (st === 'play' || st === 'raidIntro' || st === 'raid') this.updateWorkers(dt);
+    if (st === 'play') {
+      if (this.playT > AD.attackAt && !this.raidQueued) this.queueRaid(0.1);
+      this.handleBattlePad(dt);
+    }
     if (st === 'raidIntro' && this.stateT > 2.2) {
       this.state = 'raid';
       this.stateT = 0;
     }
-    if (st === 'raid' || st === 'raidIntro') this.updateRaid(dt);
+    this.updateCombat(dt);
     this.updateFlyers(dt);
     this.updateGuide();
     for (const p of this.pads) p.update(this.time, dt);
+    this.battlePad.update(this.time, dt);
     this.guide.update(this.time);
     this.fx.update(dt);
     this.updateCamera(dt);
@@ -284,15 +398,35 @@ export class Game {
   }
 
   produce(dt) {
-    for (const type of ['stone', 'gold']) {
-      this.prodT[type] -= dt;
-      if (this.prodT[type] <= 0 && this.piles[type] < PRODUCE.pileMax) {
-        this.prodT[type] = type === 'stone' ? PRODUCE.stoneEvery : PRODUCE.goldEvery;
-        this.piles[type]++;
-        if (type === 'stone' && Math.random() < 0.35) {
-          const d = this.diggers[Math.floor(Math.random() * 2)];
-          this.fx.bigDust(d.x - 0.4, 0.2, d.z - 0.6, 1, 0.3, 0xc9a074);
+    const work = (list, type, every) => {
+      for (const w of list) {
+        w.t -= dt;
+        if (w.t <= 0) {
+          w.t = every * this.prodMul * rnd(0.85, 1.15);
+          if (this.piles[type] < PRODUCE.pileMax) {
+            this.piles[type]++;
+            this.fx.bigDust(w.x - Math.sin(w.yaw) * 0.8, 0.2, w.z - Math.cos(w.yaw) * 0.8, 1, 0.3, type === 'stone' ? 0xc9a074 : 0xb08a5a);
+          }
         }
+      }
+    };
+    work(this.diggers, 'stone', PRODUCE.stoneEvery);
+    work(this.cutters, 'wood', PRODUCE.woodEvery);
+    // the market turns goods into coins on its pile
+    if (this.sellQueue > 0) {
+      this.sellT -= dt;
+      if (this.sellT <= 0) {
+        this.sellT = PRODUCE.sellEvery;
+        this.sellQueue--;
+        const n = Math.min(PRODUCE.coinsPerItem, PRODUCE.coinPileMax - this.coinPile);
+        for (let i = 0; i < n; i++) {
+          const idx = this.coinPile + i;
+          const to = this.pilePos('gold', idx);
+          const from = new THREE.Vector3(MAP.market.x, 1.4, MAP.market.z - 0.8);
+          this.fly('gold', from, () => to, 0.3, () => (this.coinShown = Math.min(this.coinPile, Math.max(this.coinShown, idx + 1))));
+        }
+        this.coinPile += n;
+        sfx.coin();
       }
     }
   }
@@ -302,19 +436,17 @@ export class Game {
     const ix = this.input.x;
     const iz = this.input.z;
     const m = Math.hypot(ix, iz);
-    P.moving = m > 0.05 && this.state !== 'win' && this.state !== 'lose';
+    P.moving = m > 0.05;
     if (P.moving) {
-      const sp = PLAYER.speed * Math.min(1, m);
-      P.x += (ix / m) * sp * Math.min(1, m) * dt;
-      P.z += (iz / m) * sp * Math.min(1, m) * dt;
+      const sp = PLAYER.speed * Math.min(1, m) * dt;
+      P.x += (ix / m) * sp;
+      P.z += (iz / m) * sp;
       const yaw = yawFor(ix, iz);
-      let d = yaw - P.yaw;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
+      const d = Math.atan2(Math.sin(yaw - P.yaw), Math.cos(yaw - P.yaw));
       P.yaw += d * Math.min(1, dt * 14);
       P.ph += dt * 11;
     }
-    // stay inside the camp, outside the obstacles
-    P.x = clamp(P.x, -15, 15);
+    P.x = clamp(P.x, -16, 16);
     P.z = clamp(P.z, MAP.wallZ + 1.6, 17);
     for (const o of this.obstacles) {
       const dx = P.x - o.x;
@@ -328,108 +460,139 @@ export class Game {
     }
   }
 
+  near(x, z, r = PLAYER.reach) {
+    return dist2(this.pasha.x, this.pasha.z, x, z) < r * r;
+  }
+
   handleStations(dt) {
     const P = this.pasha;
-    const R = PLAYER.reach;
-    // pick up from the piles
     P.pickT -= dt;
-    for (const type of ['stone', 'gold']) {
-      const [px, pz] = type === 'stone' ? MAP.quarry.pile : MAP.treasury.pile;
-      // stones stack on the back; akçe goes into the purse (counter)
-      const room = type === 'gold' ? P.gold + P.pending < 99 : P.stack.length + P.pending < PLAYER.stackMax;
-      if (dist2(P.x, P.z, px, pz) < (R + 0.6) ** 2 && this.piles[type] > 0 && room && P.pickT <= 0) {
+    P.dropT -= dt;
+    // 1) raw goods from the quarry / grove onto the back
+    for (const type of ['stone', 'wood']) {
+      const [px, pz] = PILES[type];
+      if (this.near(px, pz, PLAYER.reach + 0.6) && this.piles[type] > 0 && P.stack.length + P.pending < PLAYER.stackMax && P.pickT <= 0) {
         P.pickT = PLAYER.pickEvery;
         const from = this.pilePos(type, this.piles[type] - 1);
         this.piles[type]--;
         P.pending++;
-        if (type === 'gold') {
-          this.fly(type, from, () => new THREE.Vector3(P.x, 1.3, P.z), 0.2, () => {
-            P.pending--;
-            P.gold++;
-            this.hud.coins(P.gold, true);
-          });
-          sfx.coin();
-        } else {
-          this.fly(type, from, () => this.stackTop(P), 0.22, () => {
-            P.pending--;
-            P.stack.push(type);
-          });
-          sfx.pop();
-        }
+        this.fly(type, from, () => this.stackTop(P), 0.22, () => {
+          P.pending--;
+          P.stack.push(type);
+        });
+        sfx.pop();
       }
     }
-    // deliver to the active pad
-    P.dropT -= dt;
-    const pad = this.currentPad;
-    if (pad && dist2(P.x, P.z, pad.def.x, pad.def.z) < R * R && P.dropT <= 0) {
-      const i = pad.type === 'gold' ? (P.gold > 0 ? 0 : -1) : P.stack.lastIndexOf('stone');
-      if (i >= 0 && pad.paid + (pad.inbound || 0) < pad.total) {
-        P.dropT = PLAYER.dropEvery;
-        let from;
-        if (pad.type === 'gold') {
-          from = new THREE.Vector3(P.x, 1.3, P.z);
-          P.gold--;
-          this.hud.coins(P.gold);
-        } else {
-          from = this.stackTop(P);
-          from.y -= this.items.h.stone + 0.02;
-          P.stack.splice(i, 1);
-        }
-        pad.inbound = (pad.inbound || 0) + 1;
-        this.fly(pad.type, from, () => new THREE.Vector3(pad.def.x, 0.2, pad.def.z), 0.24, () => {
-          pad.inbound--;
-          sfx.drop();
-          if (!pad.done && pad.pay()) this.build(pad);
+    // 2) akçe from the market's coin pile into the purse
+    if (this.built.market && this.coinShown > 0 && this.near(MAP.market.coins[0], MAP.market.coins[1], PLAYER.reach + 0.4) && P.pickT <= 0) {
+      P.pickT = PLAYER.pickEvery * 0.45;
+      const take = Math.min(2, this.coinShown);
+      for (let i = 0; i < take; i++) {
+        const from = this.pilePos('gold', this.coinPile - 1);
+        this.coinPile--;
+        this.coinShown = Math.min(this.coinShown, this.coinPile);
+        this.fly('gold', from, () => new THREE.Vector3(P.x, 1.4, P.z), 0.2, () => {
+          P.gold++;
+          this.hud.coins(P.gold, true);
         });
       }
+      sfx.coin();
     }
+    if (P.dropT > 0) return;
+    // 3) pay into any open pad we stand on
+    for (const pad of this.activePads) {
+      if (!this.near(pad.def.x, pad.def.z)) continue;
+      if (pad.paid + (pad.inbound || 0) >= pad.total) continue;
+      let from = null;
+      if (pad.type === 'gold') {
+        if (P.gold <= 0) continue;
+        P.gold--;
+        this.hud.coins(P.gold);
+        from = new THREE.Vector3(P.x, 1.3, P.z);
+      } else {
+        const i = P.stack.lastIndexOf(pad.type);
+        if (i < 0) continue;
+        from = this.stackTop(P);
+        from.y -= (P.stack.length - i) * (this.items.h[pad.type] + 0.02);
+        P.stack.splice(i, 1);
+      }
+      P.dropT = PLAYER.dropEvery;
+      this.payPad(pad, pad.type, from);
+      return;
+    }
+    // 4) sell goods at the market
+    if (this.built.market && P.stack.length && this.near(MAP.market.sell[0], MAP.market.sell[1], PLAYER.reach)) {
+      P.dropT = PLAYER.dropEvery * 1.4;
+      const t = P.stack.pop();
+      const from = this.stackTop(P);
+      this.fly(t, from, () => new THREE.Vector3(MAP.market.x - 0.8, 1.3, MAP.market.z - 0.6), 0.28, () => {
+        this.sellQueue++;
+        sfx.drop();
+      });
+    }
+  }
+
+  payPad(pad, type, from) {
+    pad.inbound = (pad.inbound || 0) + 1;
+    this.fly(type, from, () => new THREE.Vector3(pad.def.x, 0.2, pad.def.z), 0.24, () => {
+      pad.inbound--;
+      sfx.drop();
+      if (!pad.done && pad.pay()) this.build(pad);
+    });
+  }
+
+  handleBattlePad(dt) {
+    const b = this.battlePad;
+    if (!b.active || b.done) return;
+    if (this.near(b.def.x, b.def.z, 1.6)) {
+      this.battleHold += dt;
+      if (this.battleHold >= 1.0) {
+        b.done = true;
+        this.queueRaid(0.3);
+      }
+    } else this.battleHold = Math.max(0, this.battleHold - dt * 2);
   }
 
   updateWorkers(dt) {
     for (const w of this.workers) {
       w.spawn = Math.min(1, w.spawn + dt * 3);
-      const pad = this.pads.find((p) => p.active && !p.done && p.type === 'stone');
+      const [qx, qz] = PILES[w.type];
+      const pad = this.activePads.find((p) => p.type === w.type);
+      const dest = pad ? [pad.def.x, pad.def.z + 0.9] : this.built.market ? [MAP.market.sell[0], MAP.market.sell[1] + 0.6] : null;
       let tx = w.x;
       let tz = w.z;
-      const [qx, qz] = MAP.quarry.pile;
       if (w.task === 'toPile') {
-        tx = qx + 1.2;
-        tz = qz + 1.0;
-        if (dist2(w.x, w.z, tx, tz) < 0.5) w.task = 'load';
+        tx = qx + (w.type === 'stone' ? 1.3 : -1.3);
+        tz = qz + 1.1;
+        if (dist2(w.x, w.z, tx, tz) < 0.4) w.task = 'load';
       } else if (w.task === 'load') {
-        tx = w.x;
-        tz = w.z;
         w.t -= dt;
-        if (w.t <= 0 && this.piles.stone > 0 && w.stack.length < WORKER.carry) {
-          w.t = 0.12;
-          this.piles.stone--;
-          w.stack.push('stone');
+        if (w.t <= 0 && this.piles[w.type] > 0 && w.stack.length + (w.pending || 0) < WORKER.carry) {
+          w.t = 0.22;
+          const from = this.pilePos(w.type, this.piles[w.type] - 1);
+          this.piles[w.type]--;
+          w.pending = (w.pending || 0) + 1;
+          this.fly(w.type, from, () => this.stackTop(w), 0.2, () => {
+            w.pending--;
+            w.stack.push(w.type);
+          });
         }
-        if (w.stack.length >= WORKER.carry || (w.stack.length && this.piles.stone === 0)) w.task = pad ? 'toPad' : 'wait';
-      } else if (w.task === 'wait') {
-        if (pad) w.task = 'toPad';
-      } else if (w.task === 'toPad') {
-        if (!pad) {
-          w.task = 'wait';
-        } else {
-          tx = pad.def.x;
-          tz = pad.def.z + 1.0;
+        if (w.stack.length >= WORKER.carry && dest) w.task = 'deliver';
+      } else if (w.task === 'deliver') {
+        if (!dest) w.task = 'load';
+        else {
+          [tx, tz] = dest;
           if (dist2(w.x, w.z, tx, tz) < 1.0) w.task = 'unload';
         }
       } else if (w.task === 'unload') {
         w.t -= dt;
-        if (!pad) w.task = 'wait';
-        else if (w.t <= 0 && w.stack.length) {
-          w.t = 0.09;
+        if (w.t <= 0 && w.stack.length) {
+          w.t = 0.14;
           const from = this.stackTop(w);
+          from.y -= this.items.h[w.type];
           w.stack.pop();
-          if (pad.paid + (pad.inbound || 0) < pad.total) {
-            pad.inbound = (pad.inbound || 0) + 1;
-            this.fly('stone', from, () => new THREE.Vector3(pad.def.x, 0.2, pad.def.z), 0.24, () => {
-              pad.inbound--;
-              if (!pad.done && pad.pay()) this.build(pad);
-            });
-          }
+          if (pad && pad.paid + (pad.inbound || 0) < pad.total) this.payPad(pad, w.type, from);
+          else if (this.built.market) this.fly(w.type, from, () => new THREE.Vector3(MAP.market.x - 0.8, 1.3, MAP.market.z - 0.6), 0.28, () => this.sellQueue++);
         }
         if (!w.stack.length) w.task = 'toPile';
       }
@@ -458,25 +621,43 @@ export class Game {
     });
   }
 
-  updateGuide() {
-    if (this.state !== 'play') {
-      this.guide.set(null);
-      return;
-    }
+  // what should the Pasha do next? → arrow + sage tip
+  objective() {
+    const P = this.pasha;
+    if (this.state !== 'play') return null;
+    const battle = this.battlePad.active && !this.battlePad.done ? { tip: 'battle', x: BATTLE_PAD.x, z: BATTLE_PAD.z } : null;
     const pad = this.currentPad;
-    if (!pad) {
-      this.guide.set(null);
-      return;
+    if (!pad) return battle;
+    if (pad.type === 'gold') {
+      if (P.gold >= Math.min(pad.total - pad.paid, 6)) return { tip: pad.def.id, x: pad.def.x, z: pad.def.z };
+      if (this.coinShown > 0) return { tip: 'coins', x: MAP.market.coins[0], z: MAP.market.coins[1] };
+      if (P.stack.length >= 6 || (P.stack.length && P.stack.length >= this.piles.stone + this.piles.wood))
+        return { tip: 'gold', x: MAP.market.sell[0], z: MAP.market.sell[1] };
+      const t = this.piles.stone >= this.piles.wood ? 'stone' : 'wood';
+      return { tip: 'gold', x: PILES[t][0], z: PILES[t][1] };
     }
-    const has = pad.type === 'gold' ? this.pasha.gold > 0 : this.pasha.stack.includes('stone');
-    if (has) this.guide.set(pad.def.x, pad.def.z);
-    else {
-      const [x, z] = pad.type === 'stone' ? MAP.quarry.pile : MAP.treasury.pile;
-      this.guide.set(x, z);
-    }
+    const have = P.stack.filter((t) => t === pad.type).length;
+    if (have >= Math.min(pad.total - pad.paid, 6) || (have && this.piles[pad.type] === 0)) return { tip: pad.def.id, x: pad.def.x, z: pad.def.z };
+    return { tip: pad.type, x: PILES[pad.type][0], z: PILES[pad.type][1] };
   }
 
-  /* ───────────────────────── raid ───────────────────────── */
+  updateGuide() {
+    const o = this.objective();
+    this.obj = o;
+    if (o) this.guide.set(o.x, o.z);
+    else this.guide.set(null);
+  }
+
+  /* ───────────────────────── combat ───────────────────────── */
+
+  spawnScouts() {
+    this.hud.callout(TEXT.scouts, 'red small');
+    sfx.horn(294, 0.5, 0, 0.12);
+    for (let i = 0; i < RAID.scouts; i++)
+      this.enemies.push({ x: rnd(-11, 11), z: MAP.enemyFrom + 10 + rnd(-4, 4), ph: rnd(0, 6), alive: true, mode: 0, hp: 1, flash: 0, hold: rnd(0, 1), scout: true });
+    this.sageSay = 'scouts';
+    this.tween(6, () => {}, () => (this.sageSay = null));
+  }
 
   queueRaid(delay) {
     this.raidQueued = true;
@@ -486,37 +667,30 @@ export class Game {
   startRaid() {
     this.state = 'raidIntro';
     this.stateT = 0;
-    this.guide.set(null);
+    this.battlePad.done = true;
     this.hud.callout(TEXT.incoming, 'red');
     sfx.charge();
     for (let i = 0; i < RAID.count; i++) {
-      const wave = Math.floor(i / 18);
-      this.enemies.push({
-        x: rnd(-12.5, 12.5),
-        z: MAP.enemyFrom + rnd(-6, 6) - wave * 9,
-        ph: rnd(0, 6),
-        alive: true,
-        mode: 0,
-        flash: 0,
-        hold: wave * 2.2 + rnd(0, 0.6),
-      });
+      const wave = Math.floor(i / 22);
+      this.enemies.push({ x: rnd(-13, 13), z: MAP.enemyFrom + rnd(-6, 6) - wave * 6, ph: rnd(0, 6), alive: true, mode: 0, hp: RAID.enemyHp, flash: 0, hold: wave * 2.6 + rnd(0, 0.8) });
     }
   }
 
   wallAt(x) {
     if (Math.abs(x) <= GATE_HALF) return true;
-    if (x < 0) return !!this.built.wallL;
-    return !!this.built.wallR;
+    return x < 0 ? !!this.built.wallL : !!this.built.wallR;
   }
 
-  updateRaid(dt) {
+  updateCombat(dt) {
+    if (!this.enemies.length) return;
+    const st = this.state;
     const front = MAP.wallZ - 1.3;
     let attackers = 0;
     let breach = false;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       e.hold -= dt;
-      if (e.hold > 0) {
+      if (e.hold > 0 || st === 'win') {
         e.ph += dt * 2;
         e.mode = 2;
         continue;
@@ -525,7 +699,7 @@ export class Game {
       const goal = blocked ? front : 20;
       if (e.z < goal - 0.05) {
         e.z = Math.min(goal, e.z + RAID.speed * dt);
-        e.x = clamp(e.x, -13, 13);
+        e.x = clamp(e.x, -14, 14);
         e.mode = 0;
         e.ph += dt * 10;
       } else {
@@ -535,64 +709,70 @@ export class Game {
       }
       if (e.z > MAP.wallZ + 2) breach = true;
     }
-    if (this.state === 'raid') {
-      if (attackers) {
-        this.wallHp -= attackers * RAID.hitDps * dt;
-        if (Math.random() < attackers * dt * 1.5) {
-          const a = this.enemies.find((e) => e.alive && e.mode === 1);
-          if (a) this.fx.clash(a.x, 1.6, MAP.wallZ - 0.9);
-          sfx.clash();
-        }
+    if (st === 'lose' || st === 'win') return;
+    if (attackers) {
+      this.wallHp -= attackers * RAID.hitDps * dt;
+      if (Math.random() < attackers * dt * 1.2) {
+        const a = this.enemies.find((e) => e.alive && e.mode === 1);
+        if (a) this.fx.clash(a.x, 1.6, MAP.wallZ - 0.9);
+        sfx.clash();
       }
-      this.updateDefence(dt);
-      const alive = this.enemies.filter((e) => e.alive).length;
-      if (!alive) return this.win();
-      if (breach || this.wallHp <= 0) return this.lose();
     }
+    this.updateDefence(dt);
+    const alive = this.enemies.filter((e) => e.alive).length;
+    if (st === 'raid' && !alive) return this.win();
+    if (breach || this.wallHp <= 0) return this.lose();
+    if (!alive && st === 'play') this.enemies = [];
   }
 
   updateDefence(dt) {
-    const alive = this.enemies.filter((e) => e.alive && e.hold <= 0);
+    const alive = this.enemies.filter((e) => e.alive && e.hold <= 0 && e.z > MAP.enemyFrom - 4);
     if (!alive.length) return;
-    // catapult: lob a boulder into the thickest part of the enemy
-    if (this.built.catapult) {
-      this.catT -= dt;
-      if (this.catT <= 0) {
-        this.catT = RAID.catapultEvery;
-        let best = alive[0];
-        let bestN = -1;
-        for (const e of alive) {
-          let n = 0;
-          for (const o of alive) if (dist2(e.x, e.z, o.x, o.z) < RAID.catapultRadius ** 2) n++;
-          if (n > bestN || (n === bestN && e.z > best.z)) {
-            bestN = n;
-            best = e;
-          }
+    for (const [id, cat] of Object.entries(this.catapults)) {
+      if (!this.built[id]) continue;
+      cat.t -= dt;
+      if (cat.t > 0) continue;
+      cat.t = RAID.catapultEvery;
+      let best = alive[0];
+      let bestN = -1;
+      for (const e of alive) {
+        let n = 0;
+        for (const o of alive) if (dist2(e.x, e.z, o.x, o.z) < RAID.catapultRadius ** 2) n++;
+        if (n > bestN || (n === bestN && e.z > best.z)) {
+          bestN = n;
+          best = e;
         }
-        this.fireCatapult(best.x, best.z + RAID.speed * 0.9);
       }
+      this.fireCatapult(cat, best.x, best.z + RAID.speed * 1.0);
     }
-    // archers
-    if (this.built.tower) {
-      this.arrowT -= dt;
-      if (this.arrowT <= 0) {
-        this.arrowT = RAID.arrowEvery;
-        const a = this.archers[Math.floor(Math.random() * this.archers.length)];
-        const t = alive.reduce((p, e) => (e.z > p.z ? e : p), alive[0]);
-        if (a && t) {
-          const from = new THREE.Vector3(a.x, a.y + 1.5, a.z);
-          const lead = new THREE.Vector3(t.x, 1.0, Math.min(t.z + RAID.speed * 0.45, MAP.wallZ - 1.3));
-          sfx.arrow();
-          this.fx.arrows.shoot(from, lead, 0.45, 2.4, () => {
-            if (t.alive) this.killEnemy(t);
-          });
+    const wallY = this.wallMax > RAID.wallHp ? 4.55 : 3.25;
+    for (const a of this.archers) {
+      a.t -= dt;
+      if (a.t > 0) continue;
+      a.t = RAID.arrowEvery * rnd(0.85, 1.15);
+      let t = null;
+      let bd = 1e9;
+      for (const e of alive) {
+        const d = dist2(e.x, e.z, a.x, MAP.wallZ);
+        if (d < bd && d < 40 * 40) {
+          bd = d;
+          t = e;
         }
       }
+      if (!t) continue;
+      const from = new THREE.Vector3(a.x, wallY + 1.5, MAP.wallZ - 0.2);
+      const lead = new THREE.Vector3(t.x, 1.0, Math.min(t.z + RAID.speed * 0.45, MAP.wallZ - 1.3));
+      sfx.arrow();
+      this.fx.arrows.shoot(from, lead, 0.45, 2.2, () => {
+        if (!t.alive) return;
+        t.hp -= 1;
+        t.flash = 1;
+        if (t.hp <= 0) this.killEnemy(t);
+      });
     }
   }
 
-  fireCatapult(x, z) {
-    const cat = this.buildings.catapult;
+  fireCatapult(cat, x, z) {
     const arm = cat.arm;
     cat.rockMesh.visible = false;
     this.tween(0.16, (k) => (arm.rotation.x = lerp(0.55, -1.5, k * k)), () =>
@@ -600,11 +780,11 @@ export class Game {
     );
     sfx.whoosh();
     const from = new THREE.Vector3(cat.position.x, 4.2, cat.position.z - 1.2);
-    const to = new THREE.Vector3(clamp(x, -13, 13), 0.4, Math.min(z, MAP.wallZ - 1.5));
+    const to = new THREE.Vector3(clamp(x, -14, 14), 0.4, Math.min(z, MAP.wallZ - 1.5));
     const d = from.distanceTo(to);
     this.fx.boulders.shoot(from, to, 0.75 + d * 0.012, 6 + d * 0.15, () => {
       sfx.boom(false);
-      this.shake = Math.max(this.shake, 0.35);
+      this.shake = Math.max(this.shake, 0.3);
       this.fx.bigDust(to.x, 0.3, to.z, 16, 2.2, 0xd8b480);
       for (let i = 0; i < 8; i++)
         this.fx.debris.emit(to.x, 0.5, to.z, { vx: rnd(-6, 6), vy: rnd(4, 9), vz: rnd(-6, 6), color: 0x8a6a4a, sx: 0.25, sy: 0.25, sz: 0.25, life: 1.4 });
@@ -637,13 +817,12 @@ export class Game {
     this.state = 'lose';
     this.stateT = 0;
     sfx.defeat();
-    this.gate.door.visible = this.wallHp > 0;
     if (this.wallHp <= 0) {
+      this.gate.door.visible = false;
       for (let i = 0; i < 20; i++) this.fx.debris.emit(rnd(-2, 2), rnd(0.5, 3), MAP.wallZ, { vx: rnd(-5, 5), vy: rnd(3, 8), vz: rnd(2, 8), color: 0x6a3f1e, sx: 0.4, sy: 0.9, sz: 0.2, life: 2.5 });
       this.fx.bigDust(0, 1, MAP.wallZ, 20, 3);
       sfx.boom(true);
     }
-    for (const e of this.enemies) if (e.alive) e.hold = -1;
     this.tween(1.8, () => {}, () => this.onEnd(false));
   }
 
@@ -653,46 +832,60 @@ export class Game {
     const B = this.batches;
     const P = this.pasha;
     const st = this.state;
+    const cheer = st === 'win';
     B.pasha.begin();
-    B.pasha.push(P.x, 0, P.z, P.yaw, P.ph, st === 'win' ? 3 : P.moving ? 0 : 2);
+    B.pasha.push(P.x, 0, P.z, P.yaw, P.ph, cheer ? 3 : P.moving ? 0 : 2);
     B.pasha.end();
-    if (st === 'win') P.ph += dt * 6;
+    if (cheer) P.ph += dt * 6;
 
     B.worker.begin();
-    for (const d of this.diggers) {
+    for (const d of [...this.diggers, ...this.cutters]) {
       d.ph += dt * 7;
-      B.worker.push(d.x, 0, d.z, d.yaw, d.ph, st === 'win' ? 3 : 1);
+      d.spawn = Math.min(1, (d.spawn ?? 1) + dt * 3);
+      B.worker.push(d.x, 0, d.z, d.yaw, d.ph, cheer ? 3 : 1, d.spawn);
     }
     for (const w of this.workers) B.worker.push(w.x, 0, w.z, w.yaw, w.ph, w.moving ? 0 : w.task === 'load' || w.task === 'unload' ? 1 : 2, w.spawn);
     B.worker.end();
 
+    const fighting = this.enemies.some((e) => e.alive && e.hold <= 0);
     B.crew.begin();
     for (const c of this.crew) {
       c.ph += dt * 4;
-      B.crew.push(c.x, 0, c.z, c.yaw, c.ph, st === 'win' ? 3 : st === 'raid' ? 1 : 2);
+      B.crew.push(c.x, 0, c.z, c.yaw, c.ph, cheer ? 3 : fighting && c.role === 'crew' ? 1 : 2);
     }
     B.crew.end();
 
     B.sage.begin();
     const sy = yawFor(P.x - MAP.sage[0], P.z - MAP.sage[1]);
     this.sageYaw = this.sageYaw == null ? sy : this.sageYaw + Math.atan2(Math.sin(sy - this.sageYaw), Math.cos(sy - this.sageYaw)) * Math.min(1, dt * 3);
-    B.sage.push(MAP.sage[0], 0, MAP.sage[1], this.sageYaw, this.time * 2, st === 'win' ? 3 : 2);
+    B.sage.push(MAP.sage[0], 0, MAP.sage[1], this.sageYaw, this.time * 2, cheer ? 3 : 2);
     B.sage.end();
 
+    const wallY = this.wallMax > RAID.wallHp ? 4.5 : 3.25;
     B.archer.begin();
-    for (const a of this.archers) B.archer.push(a.x, a.y, a.z, 0, (a.ph += dt * 4), st === 'raid' ? 1 : 2);
+    for (const a of this.archers) {
+      a.spawn = Math.min(1, a.spawn + dt * 3);
+      B.archer.push(a.x, wallY, MAP.wallZ + 0.1, 0, (a.ph += dt * 4), cheer ? 3 : fighting ? 1 : 2, a.spawn);
+    }
     B.archer.end();
 
     B.enemy.begin();
-    for (const e of this.enemies) if (e.alive) B.enemy.push(e.x, 0, e.z, Math.PI, e.ph, st === 'lose' ? 3 : e.mode, 1, 0);
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      e.flash = Math.max(0, (e.flash || 0) - dt * 5);
+      B.enemy.push(e.x, 0, e.z, Math.PI, e.ph, st === 'lose' ? 3 : e.mode, 1, e.flash);
+    }
     B.enemy.end();
 
-    // items: piles, stacks, flyers
     const I = this.items;
     I.begin();
-    for (const type of ['stone', 'gold']) for (let i = 0; i < this.piles[type]; i++) {
+    for (const type of ['stone', 'wood']) for (let i = 0; i < this.piles[type]; i++) {
       const p = this.pilePos(type, i);
       I.put(type, p.x, p.y, p.z, (i % 3) * 0.05);
+    }
+    for (let i = 0; i < Math.min(this.coinPile, this.coinShown); i++) {
+      const p = this.pilePos('gold', i);
+      I.put('gold', p.x, p.y, p.z, (i % 2) * 0.2);
     }
     const drawStack = (c, sway) => {
       let h = c === P ? 1.25 : 1.58;
@@ -701,7 +894,7 @@ export class Game {
       const bz = c.z + Math.cos(c.yaw) * back;
       c.stack.forEach((t, i) => {
         h += I.h[t] / 2;
-        const off = Math.sin(this.time * 6 + i * 0.3) * sway * i * 0.012;
+        const off = Math.sin(this.time * 6 + i * 0.3) * sway * i * 0.014;
         I.put(t, bx + Math.cos(c.yaw) * off, h, bz - Math.sin(c.yaw) * off, c.yaw);
         h += I.h[t] / 2 + 0.02;
       });
@@ -713,7 +906,7 @@ export class Game {
       const to = f.toFn();
       const x = lerp(f.from.x, to.x, k);
       const z = lerp(f.from.z, to.z, k);
-      const y = lerp(f.from.y, to.y, k) + Math.sin(k * Math.PI) * 1.6;
+      const y = lerp(f.from.y, to.y, k) + Math.sin(k * Math.PI) * 1.4;
       I.put(f.type, x, y, z, k * 3, 1);
     }
     I.end();
@@ -730,7 +923,7 @@ export class Game {
   updateCamera(dt) {
     const aspect = this.width / this.height;
     const t = clamp((aspect - 0.6) / 0.9, 0, 1);
-    const fov = lerp(54, 42, t);
+    const fov = lerp(52, 42, t);
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -740,24 +933,26 @@ export class Game {
     let pos;
     let look;
     if (st === 'intro') {
-      pos = new THREE.Vector3(0, 30, 34);
+      pos = new THREE.Vector3(0, 34, 38);
       look = new THREE.Vector3(0, 0, 2);
-    } else if (st === 'raidIntro' || st === 'raid' || st === 'win' || st === 'lose') {
+    } else if (st === 'raidIntro' || st === 'raid' || st === 'lose') {
       const zc = st === 'raidIntro' && this.stateT < 1.3 ? -30 : -13;
-      pos = new THREE.Vector3(0, lerp(28, 18, t), zc + lerp(24, 19, t));
+      pos = new THREE.Vector3(0, lerp(30, 19, t), zc + lerp(26, 20, t));
       look = new THREE.Vector3(0, 0, zc - 2);
-      if (st === 'win') {
-        pos = new THREE.Vector3(P.x * 0.5, lerp(16, 12, t), P.z + lerp(16, 13, t));
-        look = new THREE.Vector3(P.x, 1.5, P.z - 2);
-      }
+    } else if (st === 'win') {
+      pos = new THREE.Vector3(P.x * 0.5, lerp(16, 12, t), P.z + lerp(16, 13, t));
+      look = new THREE.Vector3(P.x, 1.5, P.z - 2);
     } else {
-      // classic idle-arcade three-quarter view following the Pasha
-      const cx = clamp(P.x, -8, 8);
-      const cz = clamp(P.z, 0, 12);
-      pos = new THREE.Vector3(cx * 0.8, lerp(27, 17, t), cz + lerp(16, 13, t));
+      // three-quarter view following the Pasha; pulls back when scouts attack
+      const scouts = this.enemies.some((e) => e.alive) ? 1 : 0;
+      this.scoutCam = lerp(this.scoutCam || 0, scouts, Math.min(1, dt * 2));
+      const s = this.scoutCam;
+      const cx = clamp(P.x, -8, 8) * (1 - s * 0.6);
+      const cz = clamp(P.z, 0, 12) - s * 7;
+      pos = new THREE.Vector3(cx * 0.8, lerp(31, 19, t) + s * 6, cz + lerp(18.5, 14.5, t) + s * 3);
       look = new THREE.Vector3(cx * 0.8, 0, cz - 1);
     }
-    const kk = Math.min(1, dt * (st === 'play' ? 5 : 2.4));
+    const kk = Math.min(1, dt * (st === 'play' ? 4.5 : 2.4));
     this.camPos.lerp(pos, kk);
     this.camLook.lerp(look, kk);
     this.shake = Math.max(0, this.shake - dt * 1.8);
@@ -770,20 +965,17 @@ export class Game {
     const P = this.pasha;
     const st = this.state;
     const playing = st === 'play';
-    // sage tip
-    let key = '';
-    const pad = this.currentPad;
-    if (playing && pad) {
-      const has = pad.type === 'gold' ? P.gold > 0 : P.stack.includes('stone');
-      key = has ? pad.def.tip : pad.type === 'stone' ? 'stone' : 'gold';
-    } else if (playing && !pad) key = 'ready';
+    const key = this.sageSay || this.obj?.tip || '';
     const sp = this.project(MAP.sage[0], 3.1, MAP.sage[1]);
     this.hud.setTip(key, TEXT.tips[key], sp.x, sp.y, playing && !!key && sp.vis);
     const top = this.stackTop(P);
     const p = this.project(P.x, top.y + 0.5, P.z);
-    this.hud.stackCount(playing ? P.stack.length : 0, PLAYER.stackMax, p.x, p.y);
+    this.hud.stackCount(playing || st === 'raid' ? P.stack.length : 0, PLAYER.stackMax, p.x, p.y);
     const alive = this.enemies.filter((e) => e.alive).length;
-    this.hud.raidBar(st === 'raid' || st === 'raidIntro', this.wallHp / RAID.wallHp, alive);
+    const fight = st === 'raid' || st === 'raidIntro' || (playing && alive > 0);
+    this.hud.raidBar(fight, this.wallHp / this.wallMax, alive);
+    const left = Math.max(0, AD.attackAt - this.playT);
+    this.hud.timer(playing && !fight, left, left / AD.attackAt);
   }
 
   render() {

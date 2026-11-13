@@ -28,6 +28,9 @@ export class Hud {
     this.raid = el('div', 'raid', root, `<div class="row"><b class="foes">0</b><div class="bar"><div class="hp"></div></div></div>`);
     this.raidHp = this.raid.querySelector('.hp');
     this.raidFoes = this.raid.querySelector('.foes');
+    this.clock = el('div', 'clock', root, `<span class="lbl">⚔ ${TEXT.enemyIn}</span><b>0:00</b><div class="cbar"><div class="cfill"></div></div>`);
+    this.clockN = this.clock.querySelector('b');
+    this.clockFill = this.clock.querySelector('.cfill');
     this.joy = el('div', 'joy', root, '<div class="knob"></div>');
     this.knob = this.joy.firstChild;
     this.flash = el('div', 'flash', root);
@@ -81,7 +84,7 @@ export class Hud {
     // keep the bubble on screen (its tail may drift off the sage a little)
     const half = Math.min(this.tip.offsetWidth / 2 + 8, window.innerWidth / 2);
     const cx = Math.max(half, Math.min(window.innerWidth - half, x));
-    this.tip.style.transform = `translate(${cx}px, ${Math.max(this.tip.offsetHeight + 60, y)}px) translate(-50%, -100%)`;
+    this.tip.style.transform = `translate(${cx}px, ${Math.max(this.tip.offsetHeight + 118, y)}px) translate(-50%, -100%)`;
   }
 
   stackCount(n, max, x, y) {
@@ -101,6 +104,15 @@ export class Hud {
     this.raidHp.style.width = `${Math.max(0, hp) * 100}%`;
     this.raidHp.classList.toggle('low', hp < 0.35);
     this.raidFoes.textContent = foes;
+  }
+
+  timer(visible, secs, k) {
+    this.clock.classList.toggle('show', visible);
+    if (!visible) return;
+    const s = Math.ceil(secs);
+    this.clockN.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    this.clockFill.style.width = `${Math.max(0, Math.min(1, k)) * 100}%`;
+    this.clock.classList.toggle('urgent', secs < 20);
   }
 
   float(x, y, text, kind = 'good') {

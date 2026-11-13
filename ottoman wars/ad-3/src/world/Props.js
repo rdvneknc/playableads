@@ -30,13 +30,19 @@ export class Items {
       scene.add(m);
       return m;
     };
-    this.mesh = { stone: mk(stone, false), gold: mk(gold, true) };
-    this.h = { stone: 0.24, gold: 0.17 };
+    const wood = new Builder()
+      .add(P.cyl(0.13, 0.13, 0.56, 9), C.log, [0, 0, -0.07], [0, 0, Math.PI / 2])
+      .add(P.cyl(0.12, 0.12, 0.58, 9), 0x8a5a2c, [0, 0.0, 0.11], [0, 0, Math.PI / 2])
+      .add(P.cyl(0.1, 0.1, 0.02, 9), 0xe8c48a, [0.29, 0, -0.07], [0, 0, Math.PI / 2])
+      .add(P.cyl(0.09, 0.09, 0.02, 9), 0xe8c48a, [0.3, 0, 0.11], [0, 0, Math.PI / 2])
+      .build();
+    this.mesh = { stone: mk(stone, false), gold: mk(gold, true), wood: mk(wood, false) };
+    this.h = { stone: 0.24, gold: 0.17, wood: 0.26 };
     this.o = new THREE.Object3D();
   }
 
   begin() {
-    this.n = { stone: 0, gold: 0 };
+    this.n = { stone: 0, gold: 0, wood: 0 };
   }
 
   put(type, x, y, z, ry = 0, s = 1) {
@@ -51,7 +57,7 @@ export class Items {
   }
 
   end() {
-    for (const t of ['stone', 'gold']) {
+    for (const t of ['stone', 'gold', 'wood']) {
       this.mesh[t].count = this.n[t];
       this.mesh[t].instanceMatrix.needsUpdate = true;
     }
@@ -62,8 +68,9 @@ export class Items {
 export class Pad {
   constructor(scene, def) {
     this.def = def;
-    this.type = def.need.stone ? 'stone' : 'gold';
-    this.total = def.need.stone || def.need.gold;
+    const need = def.need || {};
+    this.type = need.stone ? 'stone' : need.wood ? 'wood' : need.gold ? 'gold' : null;
+    this.total = need.stone || need.wood || need.gold || 1;
     this.paid = 0;
     this.done = false;
     this.active = false;
@@ -94,7 +101,7 @@ export class Pad {
     ctx.beginPath();
     ctx.rect(8, 248 - 240 * k, 240, 240 * k);
     ctx.clip();
-    ctx.fillStyle = this.type === 'stone' ? 'rgba(120,200,90,0.75)' : 'rgba(255,200,60,0.8)';
+    ctx.fillStyle = { stone: 'rgba(120,200,90,0.75)', wood: 'rgba(200,140,70,0.8)', gold: 'rgba(255,200,60,0.8)' }[this.type] || 'rgba(220,40,50,0.8)';
     roundRect(ctx, 8, 8, 240, 240, 34);
     ctx.restore();
     // dashed border
@@ -116,6 +123,7 @@ export class Pad {
     ctx.font = `40px ${FONT_UI}`;
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(40,20,6,0.9)';
+    if (!this.type) return this.drawBattle(ctx);
     const label = TEXT.pads[this.def.kind];
     ctx.strokeText(label, 128, 62);
     ctx.fillStyle = '#ffe9b0';
@@ -133,6 +141,16 @@ export class Pad {
       ctx.rect(84, 80, 52, 30);
       ctx.fill();
       ctx.stroke();
+    } else if (this.type === 'wood') {
+      ctx.fillStyle = '#c08a4a';
+      ctx.strokeStyle = '#5a3412';
+      ctx.lineWidth = 5;
+      for (const [x, y] of [[60, 118], [84, 92], [72, 102]].slice(0, 3)) {
+        ctx.beginPath();
+        ctx.rect(x, y, 66, 20);
+        ctx.fill();
+        ctx.stroke();
+      }
     } else {
       ctx.fillStyle = '#ffcf3a';
       ctx.strokeStyle = '#7a4a06';
@@ -153,9 +171,43 @@ export class Pad {
     ctx.fillText(String(left), 178, 118);
     ctx.font = `30px ${FONT_UI}`;
     ctx.lineWidth = 6;
-    ctx.strokeText(this.type === 'stone' ? 'STONE' : 'AKÇE', 128, 196);
-    ctx.fillStyle = this.type === 'stone' ? '#f6e2b8' : '#ffd84a';
-    ctx.fillText(this.type === 'stone' ? 'STONE' : 'AKÇE', 128, 196);
+    const word = { stone: 'STONE', wood: 'WOOD', gold: 'AKÇE' }[this.type];
+    ctx.strokeText(word, 128, 196);
+    ctx.fillStyle = { stone: '#f6e2b8', wood: '#f0c890', gold: '#ffd84a' }[this.type];
+    ctx.fillText(word, 128, 196);
+    this.tex.needsUpdate = true;
+  }
+
+  // "BATTLE!" banner pad: fills while the Pasha stands on it
+  drawBattle(ctx) {
+    ctx.fillStyle = '#ffffff';
+    // crossed swords
+    ctx.save();
+    ctx.translate(128, 104);
+    for (const a of [-0.7, 0.7]) {
+      ctx.save();
+      ctx.rotate(a);
+      ctx.fillStyle = '#e8eef4';
+      ctx.strokeStyle = '#3a1a08';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.rect(-7, -62, 14, 92);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e8b33a';
+      ctx.beginPath();
+      ctx.rect(-24, 28, 48, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.font = `46px ${FONT_UI}`;
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = 'rgba(60,8,8,0.95)';
+    ctx.strokeText(TEXT.pads.battle, 128, 196);
+    ctx.fillStyle = '#ffe2a0';
+    ctx.fillText(TEXT.pads.battle, 128, 196);
     this.tex.needsUpdate = true;
   }
 
@@ -225,6 +277,93 @@ export function makeWall(len) {
   const trim = new THREE.Mesh(new THREE.BoxGeometry(len + 0.1, 0.2, 1.5), new THREE.MeshStandardMaterial({ color: 0xe9cf9c, roughness: 0.9 }));
   trim.position.y = 3.15;
   g.add(trim);
+  return g;
+}
+
+// Lv2: a taller parapet with red banners on top of an existing wall
+export function upgradeWall(g, len) {
+  const add = new THREE.Group();
+  const tier = new THREE.Mesh(new THREE.BoxGeometry(len, 1.3, 1.5), stone(len / 2.2, 0.6));
+  tier.position.y = 3.85;
+  tier.castShadow = tier.receiveShadow = true;
+  add.add(tier);
+  const mat = stone(0.4, 0.4);
+  for (let x = -len / 2 + 0.45; x <= len / 2 - 0.4; x += 1.05) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.7, 0.55), mat);
+    m.position.set(x, 4.85, -0.45);
+    m.castShadow = true;
+    add.add(m);
+  }
+  const bmat = new THREE.MeshStandardMaterial({ color: C.red, roughness: 0.7, side: THREE.DoubleSide });
+  const gmat = new THREE.MeshStandardMaterial({ color: C.gold, roughness: 0.4, metalness: 0.3 });
+  for (let x = -len / 2 + 1.5; x < len / 2; x += 3.2) {
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.7), bmat);
+    flag.position.set(x, 3.5, -0.78);
+    add.add(flag);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.1, 0.1), gmat);
+    bar.position.set(x, 4.35, -0.78);
+    add.add(bar);
+  }
+  // existing merlons are replaced by the higher ones
+  g.children.forEach((c, i) => {
+    if (i > 0 && c.position.y > 3.3) c.visible = false;
+  });
+  g.add(add);
+  g.lv2 = add;
+  return add;
+}
+
+export function makeMarket() {
+  const g = new THREE.Group();
+  const b = new Builder();
+  for (const [x, z] of [[-2.2, -1.1], [2.2, -1.1], [-2.2, 1.1], [2.2, 1.1]]) b.add(P.cyl(0.09, 0.1, 2.9, 7), C.woodDark, [x, 1.45, z]);
+  for (let i = 0; i < 9; i++) b.add(P.box(0.5, 0.06, 2.7), i % 2 ? 0xf4ecda : C.red, [-2.0 + i * 0.5, 3.05 - Math.abs(i - 4) * 0.05, 0], [0.18, 0, 0]);
+  for (let i = 0; i < 9; i++) b.add(P.cone(0.25, 0.32, 3), i % 2 ? 0xf4ecda : C.red, [-2.0 + i * 0.5, 2.62, -1.42], [Math.PI, 0, 0]);
+  b.add(P.box(4.2, 0.18, 1.3), 0x9a6232, [0, 1.0, -0.6]);
+  b.add(P.box(4.0, 0.9, 1.1), 0x7a4a24, [0, 0.5, -0.6]);
+  // goods on the counter
+  b.add(P.box(0.5, 0.24, 0.38), C.stone, [-1.4, 1.22, -0.6]);
+  b.add(P.box(0.5, 0.24, 0.38), C.stone, [-1.35, 1.46, -0.55], [0, 0.3, 0]);
+  b.add(P.cyl(0.12, 0.12, 0.6, 8), C.log, [-0.5, 1.22, -0.6], [0, 0, Math.PI / 2]);
+  b.add(P.cyl(0.25, 0.3, 0.35, 10), 0xd98a3a, [0.5, 1.27, -0.65]);
+  b.add(P.sph(0.12, 8, 6), 0xe8463a, [1.3, 1.2, -0.6]);
+  b.add(P.sph(0.12, 8, 6), 0xf2c23a, [1.5, 1.2, -0.45]);
+  b.add(P.sph(0.12, 8, 6), 0x7ab83a, [1.45, 1.22, -0.75]);
+  // sacks & scales
+  b.add(P.sph(0.45, 8, 6), 0xd8c49a, [-2.9, 0.38, 0.2], [0, 0, 0], [1, 0.85, 1]);
+  b.add(P.sph(0.4, 8, 6), 0xcdb68a, [2.9, 0.34, 0.4], [0, 0, 0], [1, 0.85, 1]);
+  const m = mesh(b.build());
+  g.add(m);
+  return g;
+}
+
+export function makeGrove() {
+  const g = new THREE.Group();
+  const palm = (x, z, s, lean) => {
+    const b = new Builder();
+    for (let k = 0; k < 6; k++) b.add(P.cyl(0.17 - k * 0.012, 0.19 - k * 0.012, 0.75, 7), k % 2 ? 0x8a6238 : 0x7a5530, [k * lean, 0.37 + k * 0.72, 0], [0, 0, -lean]);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      b.add(P.box(0.5, 0.06, 2.4), k % 2 ? 0x4f8a2e : 0x3f7a26, [6 * lean + Math.cos(a) * 1.0, 4.35, Math.sin(a) * 1.0], [0.45, -a + Math.PI / 2, 0]);
+    }
+    b.add(P.sph(0.22, 8, 6), 0x8a4a1c, [6 * lean, 4.25, 0]);
+    const m = mesh(b.build());
+    m.position.set(x, 0, z);
+    m.scale.setScalar(s);
+    m.rotation.y = x * 1.7;
+    g.add(m);
+  };
+  palm(0, -2.2, 1.1, 0.07);
+  palm(2.4, -0.5, 0.95, 0.05);
+  palm(-0.6, 1.6, 1.0, 0.08);
+  palm(2.2, 2.6, 0.9, 0.06);
+  palm(3.6, -2.6, 1.05, 0.04);
+  // chopped stumps
+  const b = new Builder();
+  b.add(P.cyl(0.22, 0.26, 0.4, 8), 0x8a6238, [-1.6, 0.2, -0.4]);
+  b.add(P.cyl(0.21, 0.21, 0.02, 8), 0xe8c48a, [-1.6, 0.41, -0.4]);
+  b.add(P.cyl(0.13, 0.13, 1.4, 8), C.log, [0.8, 0.13, 1.0], [0, 0.6, Math.PI / 2]);
+  g.add(mesh(b.build()));
   return g;
 }
 

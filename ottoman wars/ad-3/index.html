@@ -107,6 +107,19 @@
       .purse b { font-weight: 400; min-width: 22px; }
       .purse.bump i { animation: bump .25s ease-out; }
 
+      /* enemy countdown */
+      .clock {
+        position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 58px); transform: translate(-50%, -20px); opacity: 0; transition: .35s;
+        display: grid; grid-template-columns: auto auto; gap: 4px 10px; align-items: center; padding: 6px 12px; border-radius: 14px; background: rgba(30,16,6,.72); border: 2px solid #e8b33a;
+      }
+      .clock.show { opacity: 1; transform: translate(-50%, 0); }
+      .clock .lbl { font-size: 13px; color: #ffd9a0; letter-spacing: 1px; }
+      .clock b { font-weight: 400; font-size: 18px; text-align: right; }
+      .clock .cbar { grid-column: 1 / 3; width: min(50vw, 220px); height: 8px; border-radius: 6px; background: rgba(0,0,0,.4); overflow: hidden; }
+      .clock .cfill { height: 100%; background: linear-gradient(90deg, #ff6a5a, #e8b33a); }
+      .clock.urgent { border-color: #ff5a4a; animation: pulse .8s ease-in-out infinite; }
+      .callout.small { font-size: clamp(30px, 9vw, 56px); }
+
       /* raid bar */
       .raid { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 58px); transform: translate(-50%, -20px); opacity: 0; transition: .35s; }
       .raid.show { opacity: 1; transform: translate(-50%, 0); }
