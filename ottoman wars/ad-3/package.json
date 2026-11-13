@@ -1,0 +1,17 @@
+{
+  "name": "ottoman-wars-ad-3",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ottoman Wars — 3D idle arcade playable (Three.js, vendored in src/vendor)",
+  "scripts": {
+    "dev": "vite",
+    "dev:mobile": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
