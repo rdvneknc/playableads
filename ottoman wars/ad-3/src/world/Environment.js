@@ -24,6 +24,43 @@ export function roundRect(ctx, x, y, w, h, r) {
   ctx.fill();
 }
 
+function grassTexture() {
+  const N = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#c8c8c8';
+  ctx.fillRect(0, 0, N, N);
+  // tiny blades in light/dark strokes
+  for (let i = 0; i < 5200; i++) {
+    const x = rnd() * N;
+    const y = rnd() * N;
+    const l = 150 + rnd() * 105;
+    ctx.strokeStyle = `rgba(${l * 0.92},${l},${l * 0.8},0.55)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rnd() - 0.5) * 3, y - 2 - rnd() * 4);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 40; i++) {
+    const x = rnd() * N;
+    const y = rnd() * N;
+    const r = 10 + rnd() * 24;
+    const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(${rnd() < 0.5 ? '90,100,60' : '255,250,210'},0.18)`);
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(90, 90);
+  t.anisotropy = 8;
+  return t;
+}
+
 export const SUN_DIR = new THREE.Vector3(-0.45, 0.85, 0.3).normalize();
 
 export class Environment {
@@ -97,7 +134,7 @@ export class Environment {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     geo.computeVertexNormals();
-    const g = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const g = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: grassTexture() }));
     g.receiveShadow = true;
     this.scene.add(g);
     // packed earth inside the walls (soft-edged canvas texture) + the road north
@@ -166,6 +203,32 @@ export class Environment {
     });
     im.castShadow = im.receiveShadow = true;
     this.scene.add(im);
+    // grass tufts & wild flowers
+    const tuft = new Builder();
+    for (let k = 0; k < 5; k++) tuft.add(P.cone(0.07, 0.55, 3), k % 2 ? 0x7fa046 : 0x95b455, [Math.cos(k * 1.3) * 0.12, 0.25, Math.sin(k * 1.3) * 0.12], [Math.cos(k) * 0.3, 0, Math.sin(k) * 0.3]);
+    const flower = new Builder()
+      .add(P.cone(0.05, 0.4, 3), 0x7fa046, [0, 0.2, 0])
+      .add(P.sph(0.08, 5, 4), 0xe8d24a, [0, 0.42, 0])
+      .add(P.cone(0.05, 0.32, 3), 0x7fa046, [0.12, 0.16, 0.05])
+      .add(P.sph(0.07, 5, 4), 0xe85a4a, [0.12, 0.33, 0.05]);
+    const scatter = (geo, n, rMin, rMax) => {
+      const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), n);
+      let i = 0;
+      while (i < n) {
+        const x = rr(-rMax, rMax);
+        const z = rr(-rMax, rMax);
+        const d = Math.max(Math.abs(x), Math.abs(z));
+        if (d < rMin || (Math.abs(x) < 3.5 && z < -14)) continue;
+        o.position.set(x, 0, z);
+        o.rotation.y = rr(0, 6);
+        o.scale.setScalar(rr(0.7, 1.5));
+        o.updateMatrix();
+        m.setMatrixAt(i++, o.matrix);
+      }
+      this.scene.add(m);
+    };
+    scatter(tuft.build(), 900, 16.5, 48);
+    scatter(flower.build(), 220, 16.5, 40);
     // distant hills
     const b = new Builder();
     for (let i = 0; i < 18; i++) {

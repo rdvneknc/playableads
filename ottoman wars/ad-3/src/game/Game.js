@@ -6,6 +6,7 @@ import { UnitBatch } from '../world/UnitBatch.js';
 import { Guide, Items, Pad } from '../world/Props.js';
 import { cannon, gatehouse, ghostOf, house, quarry, scaffold, tent, tower, townHall, tree, wallSegment, woodHut } from '../world/Town.js';
 import { Fx } from '../fx/Fx.js';
+import { withDetail } from '../world/Detail.js';
 import { sfx } from '../audio/Sfx.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -28,7 +29,7 @@ export class Game {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.5, 900);
     this.env = new Environment(this.scene);
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.04 });
+    const mat = withDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.04 }), { strength: 0.12, scale: 2.2, ao: 0.7 });
     this.batches = {
       pasha: new UnitBatch(this.scene, MODELS.pasha(), 1, mat, { scale: 1.1 }),
       worker: new UnitBatch(this.scene, MODELS.worker(), 8, mat),
@@ -347,16 +348,19 @@ export class Game {
     dt = Math.min(dt, 1 / 20);
     this.time += dt;
     this.stateT += dt;
+    // run finished callbacks after filtering, so tweens they start aren't dropped
+    const finished = [];
     this.tweens = this.tweens.filter((tw) => {
       tw.t += dt;
       const k = Math.min(1, tw.t / tw.time);
       tw.fn?.(k);
       if (k >= 1) {
-        tw.done?.();
+        if (tw.done) finished.push(tw.done);
         return false;
       }
       return true;
     });
+    finished.forEach((f) => f());
     const st = this.state;
     if (st === 'intro' && this.stateT > 1.6) {
       this.state = 'ready';
@@ -387,6 +391,7 @@ export class Game {
     this.updateGuide();
     for (const p of this.pads) p.update(this.time, dt);
     this.battle.pad.update(this.time, dt);
+    this.guide.origin(this.pasha.x, this.pasha.z);
     this.guide.update(this.time);
     this.fx.update(dt);
     this.updateCamera(dt);
@@ -900,9 +905,11 @@ export class Game {
     const P = this.pasha;
     const st = this.state;
     const playing = st === 'play';
-    const key = this.sageSay || this.obj?.tip || '';
+    // the sage only speaks for special moments now; the quest panel carries the steps
+    const key = this.sageSay || '';
     const sp = this.project(MAP.sage[0], 3.1, MAP.sage[1]);
     this.hud.setTip(key, TEXT.tips[key], sp.x, sp.y, playing && !!key && sp.vis);
+    this.hud.quest(playing ? this.questInfo() : null);
     const top = this.stackTop(P);
     const p = this.project(P.x, top.y + 0.5, P.z);
     this.hud.stackCount(playing || st === 'raid' ? P.stack.length : 0, PLAYER.stackMax, p.x, p.y);
@@ -937,6 +944,24 @@ export class Game {
     this.hud.raidBar(fight, this.wallHp / this.wallMax, alive);
     const left = Math.max(0, AD.attackAt - this.playT);
     this.hud.timer(playing && !fight, left, left / AD.attackAt);
+  }
+
+  // "STEP 3/10 · BUILD A HOUSE — Bring 4 more wood" + what to do right now
+  questInfo() {
+    const pad = this.currentPad;
+    const o = this.obj;
+    if (!pad) {
+      if (this.battle.active && !this.battle.done) return { step: '⚔', title: TEXT.battle, sub: TEXT.tips.battle, icon: 'battle' };
+      return null;
+    }
+    const idx = PADS.findIndex((p) => p.id === pad.def.id) + 1;
+    const info = INFO[pad.def.kind];
+    const left = pad.total - pad.paid;
+    const res = { wood: 'wood', stone: 'stone', gold: 'akçe' }[pad.type];
+    const title = `BUILD: ${info.name}`;
+    const need = `${left} ${res} needed`;
+    const now = o ? TEXT.tips[o.tip] : '';
+    return { step: `${idx}/${PADS.length}`, title, sub: `${need} · ${now}`, icon: pad.type, k: pad.paid / pad.total };
   }
 
   render() {

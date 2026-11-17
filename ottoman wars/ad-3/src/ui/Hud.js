@@ -36,7 +36,28 @@ export class Hud {
     this.flash = el('div', 'flash', root);
     this.purse = el('div', 'purse', root, '<i></i><b>0</b>');
     this.purseN = this.purse.querySelector('b');
+    this.questEl = el('div', 'quest', root, '<div class="qstep"></div><div class="qbody"><b></b><span></span><div class="qbar"><i></i></div></div><div class="qicon"></div>');
+    this.qStep = this.questEl.querySelector('.qstep');
+    this.qTitle = this.questEl.querySelector('b');
+    this.qSub = this.questEl.querySelector('span');
+    this.qBar = this.questEl.querySelector('.qbar i');
+    this.qIcon = this.questEl.querySelector('.qicon');
     this.tipKey = '';
+  }
+
+  quest(q) {
+    this.questEl.classList.toggle('show', !!q);
+    if (!q) return;
+    if (this.qTitle.textContent !== q.title) {
+      this.questEl.classList.remove('new');
+      void this.questEl.offsetWidth;
+      this.questEl.classList.add('new');
+    }
+    this.qStep.textContent = q.step;
+    this.qTitle.textContent = q.title;
+    this.qSub.textContent = q.sub;
+    this.qBar.style.width = `${(q.k || 0) * 100}%`;
+    this.qIcon.className = `qicon ${q.icon || ''}`;
   }
 
   showTitle(v) {
@@ -139,8 +160,8 @@ export class Hud {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const s = Math.max(Math.abs(dx) / 0.86, Math.abs(dy) / 0.8, 1e-3);
-    const x = (dx / s) * 0.5 * w + w / 2;
-    const y = Math.max(110, Math.min(h - 60, (dy / s) * 0.5 * h + h / 2));
+    const x = Math.max(36, Math.min(w - 36, (dx / s) * 0.5 * w + w / 2));
+    const y = Math.max(165, Math.min(h - 70, (dy / s) * 0.5 * h + h / 2));
     const a = Math.atan2(dy * h, dx * w);
     this.ptr.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${a}rad)`;
   }

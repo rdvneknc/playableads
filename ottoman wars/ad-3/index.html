@@ -16,6 +16,7 @@
         touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
       }
       #scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; }
+      #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(30,18,6,.38) 100%); }
       #hud {
         position: fixed; inset: 0; pointer-events: none; overflow: hidden; color: #fff;
         font-family: OWUi, 'Arial Black', Arial, sans-serif; z-index: 2;
@@ -85,7 +86,7 @@
 
       /* sage tip */
       .tip {
-        position: absolute; left: 0; top: 0; max-width: min(64vw, 280px); padding: 10px 14px; border-radius: 16px; background: #fffaf0; color: #3a1d08;
+        position: absolute; left: 0; top: 0; max-width: min(64vw, 280px); padding: 10px 14px; border-radius: 16px; background: rgba(28,16,6,.92); color: #fff6e0;
         font: 700 15px/1.25 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 6px 16px rgba(0,0,0,.3); border: 3px solid #e8b33a;
         opacity: 0; transition: opacity .25s; text-align: center; will-change: transform;
       }
@@ -93,7 +94,7 @@
       .tip.show { opacity: 1; }
       .tip.pop span { display: inline-block; animation: bump .35s ease-out; }
       .stackcount {
-        position: absolute; left: 0; top: 0; padding: 2px 10px 3px; border-radius: 10px; font-size: 18px; background: rgba(30,16,6,.75); border: 2px solid #fff; display: none; will-change: transform;
+        position: absolute; left: 0; top: 0; padding: 2px 10px 3px; border-radius: 10px; font-size: 18px; background: rgba(26,14,4,.9); border: 2px solid #ffd23f; display: none; will-change: transform;
       }
       .stackcount.max { background: linear-gradient(#ff6a5a, #c8202a); }
 
@@ -110,12 +111,33 @@
       .ptr { position: absolute; left: 0; top: 0; display: none; width: 46px; height: 46px; border-radius: 50%; background: rgba(36,22,10,.75); border: 3px solid #ffd23f; animation: pulse 1s ease-in-out infinite; }
       .ptr i { position: absolute; left: 15px; top: 11px; border: 12px solid transparent; border-left: 18px solid #ffd23f; border-right: 0; }
 
+      /* quest panel */
+      .quest {
+        position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 66px); transform: translate(-50%, -16px); opacity: 0; transition: .35s;
+        width: min(92vw, 430px); display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 16px;
+        background: linear-gradient(rgba(44,26,10,.94), rgba(26,14,4,.94)); border: 2px solid #ffd23f; box-shadow: 0 6px 18px rgba(0,0,0,.4), 0 0 0 2px rgba(0,0,0,.35);
+      }
+      .quest.show { opacity: 1; transform: translate(-50%, 0); }
+      .quest.new { animation: questIn .5s cubic-bezier(.2,1.6,.4,1); }
+      @keyframes questIn { 0% { transform: translate(-50%, 0) scale(.85); } 100% { transform: translate(-50%, 0) scale(1); } }
+      .qstep { flex: none; min-width: 46px; height: 46px; display: grid; place-items: center; border-radius: 12px; background: linear-gradient(#ffd86a, #e09a1a); color: #3a1d04; font-size: 15px; border: 2px solid #fff3c0; }
+      .qbody { flex: 1; min-width: 0; text-align: left; }
+      .qbody b { display: block; font-weight: 400; font-size: 16px; color: #ffe2a0; letter-spacing: .5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .qbody span { display: block; font: 700 13px/1.25 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #fff; margin-top: 2px; }
+      .qbar { height: 6px; margin-top: 5px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; }
+      .qbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8fd45a, #4fae3a); transition: width .2s; }
+      .qicon { flex: none; width: 34px; height: 34px; border-radius: 8px; }
+      .qicon.wood { background: linear-gradient(#c08a4a, #8a5a2c); box-shadow: inset 0 -8px 0 rgba(0,0,0,.2); border-radius: 50%; border: 3px solid #e8c48a; }
+      .qicon.stone { background: linear-gradient(#f0e2c0, #c8b48a); border: 3px solid #fff3d0; }
+      .qicon.gold { background: radial-gradient(circle at 35% 30%, #fff6c8, #ffcf3a 50%, #b07a10); border-radius: 50%; border: 2px solid #7a4a06; }
+      .qicon.battle { background: linear-gradient(#ff6a5a, #c8202a); border-radius: 50%; border: 2px solid #fff; }
+
       /* plot info cards */
       .card {
         position: absolute; left: 0; top: 0; display: none; min-width: 130px; padding: 6px 10px 7px; border-radius: 12px; text-align: center;
-        background: rgba(36,22,10,.82); border: 2px solid rgba(255,230,170,.75); box-shadow: 0 4px 12px rgba(0,0,0,.3); will-change: transform; opacity: .85;
+        background: rgba(26,14,4,.94); border: 2px solid rgba(255,230,170,.75); box-shadow: 0 4px 12px rgba(0,0,0,.3); will-change: transform; opacity: .85;
       }
-      .card.main { opacity: 1; border-color: #ffd23f; }
+      .card.main { opacity: 1; border-color: #ffd23f; box-shadow: 0 0 0 3px rgba(255,210,63,.35), 0 6px 14px rgba(0,0,0,.4); }
       .card b { display: block; font-weight: 400; font-size: 16px; color: #ffe2a0; letter-spacing: .5px; }
       .card span { display: block; font: 600 12px/1.2 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #f4ead6; margin-top: 2px; }
       .card .pbar { display: none; height: 6px; margin-top: 5px; border-radius: 4px; background: rgba(0,0,0,.45); overflow: hidden; }
@@ -125,23 +147,25 @@
 
       /* enemy countdown */
       .clock {
-        position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 58px); transform: translate(-50%, -20px); opacity: 0; transition: .35s;
+        position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 10px); transform: translate(-50%, -20px); opacity: 0; transition: .35s;
         display: grid; grid-template-columns: auto auto; gap: 4px 10px; align-items: center; padding: 6px 12px; border-radius: 14px; background: rgba(30,16,6,.72); border: 2px solid #e8b33a;
       }
       .clock.show { opacity: 1; transform: translate(-50%, 0); }
-      .clock .lbl { font-size: 13px; color: #ffd9a0; letter-spacing: 1px; }
+      .clock .lbl { font-size: 0; }
+      .clock .lbl::first-letter { font-size: 16px; color: #ff8a7a; }
+      .clock { padding: 4px 10px !important; gap: 2px 6px !important; }
       .clock b { font-weight: 400; font-size: 18px; text-align: right; }
-      .clock .cbar { grid-column: 1 / 3; width: min(50vw, 220px); height: 8px; border-radius: 6px; background: rgba(0,0,0,.4); overflow: hidden; }
+      .clock .cbar { grid-column: 1 / 3; width: min(22vw, 92px); height: 8px; border-radius: 6px; background: rgba(0,0,0,.4); overflow: hidden; }
       .clock .cfill { height: 100%; background: linear-gradient(90deg, #ff6a5a, #e8b33a); }
       .clock.urgent { border-color: #ff5a4a; animation: pulse .8s ease-in-out infinite; }
       .callout.small { font-size: clamp(30px, 9vw, 56px); }
 
       /* raid bar */
-      .raid { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 58px); transform: translate(-50%, -20px); opacity: 0; transition: .35s; }
+      .raid { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 12px); transform: translate(-50%, -20px); opacity: 0; transition: .35s; }
       .raid.show { opacity: 1; transform: translate(-50%, 0); }
       .raid .row { display: flex; align-items: center; gap: 10px; }
       .raid .foes { min-width: 46px; padding: 3px 10px; border-radius: 12px; text-align: center; font-weight: 400; font-size: 20px; background: linear-gradient(#6fb1ff, #2f6fd6); border: 2px solid #fff; }
-      .raid .bar { width: min(52vw, 260px); height: 18px; border-radius: 10px; background: rgba(20,10,4,.8); border: 2px solid #fff; overflow: hidden; }
+      .raid .bar { width: min(34vw, 170px); height: 18px; border-radius: 10px; background: rgba(20,10,4,.8); border: 2px solid #fff; overflow: hidden; }
       .raid .hp { height: 100%; width: 100%; background: linear-gradient(#ffe08a, #e8b33a); transition: width .15s; }
       .raid .hp.low { background: linear-gradient(#ff8a7a, #c8202a); }
 
@@ -269,6 +293,7 @@
   </head>
   <body>
     <canvas id="scene"></canvas>
+    <div id="vignette"></div>
     <div id="hud"></div>
     <div id="boot"><i></i>OTTOMAN WARS</div>
     <!-- Ad SDKs inject the real MRAID bridge here; in a plain browser this simply 404s -->

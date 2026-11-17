@@ -1,6 +1,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { Builder, P } from './geom.js';
 import { roundRect } from './Environment.js';
+import { withDetail } from './Detail.js';
 import { COLORS as C, FONT_UI, TEXT, MAP, INFO } from '../config.js';
 
 const vmat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 });
@@ -23,7 +24,7 @@ export class Items {
       .add(P.box(0.34, 0.05, 0.18), 0xfff0a0, [0, 0.1, 0])
       .build();
     const mk = (geo, metal) => {
-      const m = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: metal ? 0.3 : 0.8, metalness: metal ? 0.55 : 0 }), 420);
+      const m = new THREE.InstancedMesh(geo, withDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: metal ? 0.3 : 0.8, metalness: metal ? 0.55 : 0 }), { strength: metal ? 0 : 0.5, scale: 1.4, ao: 0.4 }), 420);
       m.castShadow = true;
       m.frustumCulled = false;
       m.count = 0;
@@ -94,8 +95,11 @@ export class Pad {
     const ctx = this.cv.getContext('2d');
     const k = this.paid / this.total;
     ctx.clearRect(0, 0, 256, 256);
-    ctx.fillStyle = 'rgba(30,18,8,0.55)';
-    roundRect(ctx, 8, 8, 240, 240, 34);
+    ctx.shadowColor = 'rgba(255,200,60,0.9)';
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = 'rgba(22,12,4,0.86)';
+    roundRect(ctx, 10, 10, 236, 236, 34);
+    ctx.shadowBlur = 0;
     // progress fill from the bottom
     ctx.save();
     ctx.beginPath();
@@ -105,9 +109,9 @@ export class Pad {
     roundRect(ctx, 8, 8, 240, 240, 34);
     ctx.restore();
     // dashed border
-    ctx.setLineDash([22, 14]);
-    ctx.lineWidth = 9;
-    ctx.strokeStyle = '#fff';
+    ctx.setLineDash([22, 12]);
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#ffd23f';
     ctx.beginPath();
     ctx.moveTo(40, 12);
     ctx.arcTo(244, 12, 244, 244, 30);
@@ -498,7 +502,7 @@ export function makeTreasury() {
   return g;
 }
 
-/* ── Bouncing guide arrow over the next target ── */
+/* ── Guidance: bouncing arrow, pulsing ground ring and a flowing trail of dots ── */
 export class Guide {
   constructor(scene) {
     const b = new Builder()
@@ -507,18 +511,75 @@ export class Guide {
     this.mesh = new THREE.Mesh(b.build(), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
     this.mesh.visible = false;
     scene.add(this.mesh);
+    const glow = (r0, r1, op) =>
+      new THREE.Mesh(
+        new THREE.RingGeometry(r0, r1, 48),
+        new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: op, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+      );
+    this.ring = glow(1.55, 1.85, 0.95);
+    this.ring2 = glow(1.2, 2.3, 0.35);
+    for (const r of [this.ring, this.ring2]) {
+      r.rotation.x = -Math.PI / 2;
+      r.visible = false;
+      r.renderOrder = 5;
+      scene.add(r);
+    }
+    this.dots = new THREE.InstancedMesh(
+      new THREE.CircleGeometry(0.17, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false }),
+      40,
+    );
+    this.dots.count = 0;
+    this.dots.frustumCulled = false;
+    this.dots.renderOrder = 4;
+    scene.add(this.dots);
+    this.o = new THREE.Object3D();
     this.target = null;
+    this.from = null;
   }
 
   set(x, z) {
     this.target = x == null ? null : new THREE.Vector3(x, 0, z);
     this.mesh.visible = !!this.target;
+    this.ring.visible = this.ring2.visible = !!this.target;
+    if (!this.target) this.dots.count = 0;
+  }
+
+  // player position for the trail
+  origin(x, z) {
+    this.from = new THREE.Vector3(x, 0, z);
   }
 
   update(t) {
     if (!this.target) return;
-    this.mesh.position.set(this.target.x, 3.2 + Math.abs(Math.sin(t * 4)) * 0.9, this.target.z);
+    const T = this.target;
+    this.mesh.position.set(T.x, 3.4 + Math.abs(Math.sin(t * 4)) * 0.9, T.z);
     this.mesh.rotation.y = t * 2;
+    const k = (t * 1.2) % 1;
+    this.ring.position.set(T.x, 0.06, T.z);
+    this.ring2.position.set(T.x, 0.05, T.z);
+    this.ring.scale.setScalar(0.9 + Math.sin(t * 5) * 0.06);
+    this.ring2.scale.setScalar(0.6 + k * 0.8);
+    this.ring2.material.opacity = 0.45 * (1 - k);
+    // dots from the player to the goal, flowing toward it
+    let n = 0;
+    if (this.from) {
+      const d = this.from.distanceTo(T);
+      if (d > 3.2) {
+        const step = 0.95;
+        const off = (t * 2.2) % step;
+        for (let s = 1.0 + off; s < d - 1.8 && n < 40; s += step) {
+          const f = s / d;
+          this.o.position.set(this.from.x + (T.x - this.from.x) * f, 0.05, this.from.z + (T.z - this.from.z) * f);
+          this.o.rotation.set(-Math.PI / 2, 0, 0);
+          this.o.scale.setScalar(0.75 + 0.35 * Math.sin(f * Math.PI));
+          this.o.updateMatrix();
+          this.dots.setMatrixAt(n++, this.o.matrix);
+        }
+      }
+    }
+    this.dots.count = n;
+    this.dots.instanceMatrix.needsUpdate = true;
   }
 }
 

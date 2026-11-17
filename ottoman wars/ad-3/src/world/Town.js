@@ -1,5 +1,6 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { Builder, P } from './geom.js';
+import { withDetail } from './Detail.js';
 
 // Ottoman town kit in the style of the Ottoman Wars city view:
 // plaster & timber houses with terracotta roofs, octagonal stone towers with
@@ -26,7 +27,8 @@ export const T = {
   leaf2: 0x8fb856,
 };
 
-export const solid = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82 });
+let SOLID = null;
+export const solid = () => (SOLID ||= withDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 })));
 const mk = (b) => {
   const m = new THREE.Mesh(b.build(), solid());
   m.castShadow = true;
@@ -207,7 +209,7 @@ export function quarry() {
   b.add(new THREE.DodecahedronGeometry(1, 0), 0xa3977e, [0.8, 2.4, -1.0], [0.5, 1, 0], [1.0, 0.8, 0.9]);
   b.add(P.box(0.6, 0.35, 0.5), 0xe6d8b8, [1.8, 0.18, 1.6], [0, 0.4, 0]);
   b.add(P.box(0.6, 0.35, 0.5), 0xe6d8b8, [-1.4, 0.18, 1.9], [0, -0.3, 0]);
-  const m = new THREE.Mesh(b.build(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }));
+  const m = new THREE.Mesh(b.build(), withDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), { scale: 0.7, strength: 0.7 }));
   m.castShadow = m.receiveShadow = true;
   return m;
 }
