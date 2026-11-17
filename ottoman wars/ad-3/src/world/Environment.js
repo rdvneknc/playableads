@@ -154,12 +154,49 @@ export class Environment {
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     const dirtMat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false });
-    const yard = new THREE.Mesh(new THREE.PlaneGeometry(MAP.half * 2.3, MAP.half * 2.3), dirtMat);
-    yard.rotation.x = -Math.PI / 2;
-    yard.position.y = 0.01;
-    yard.renderOrder = -2;
-    yard.receiveShadow = true;
-    this.scene.add(yard);
+    // inside the walls stays green: only worn earth patches where people work and walk
+    const patch = (x, z, w, d) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), dirtMat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(x, 0.01, z);
+      m.renderOrder = -2;
+      m.receiveShadow = true;
+      this.scene.add(m);
+    };
+    patch(MAP.wood.pile[0] - 2, MAP.wood.pile[1] - 1, 9, 8); // woodcutter yard
+    patch(MAP.quarry.pile[0] + 2, MAP.quarry.pile[1] - 1, 9, 8); // quarry yard
+    patch(MAP.hall[0], MAP.hall[1] + 0.5, 12, 10); // square in front of the konak
+    // footpaths (soft-edged strips)
+    const pcv = document.createElement('canvas');
+    pcv.width = 64;
+    pcv.height = 8;
+    const pctx = pcv.getContext('2d');
+    const pg = pctx.createLinearGradient(0, 0, 64, 0);
+    pg.addColorStop(0, 'rgba(206,186,144,0)');
+    pg.addColorStop(0.25, 'rgba(206,186,144,0.9)');
+    pg.addColorStop(0.75, 'rgba(206,186,144,0.9)');
+    pg.addColorStop(1, 'rgba(206,186,144,0)');
+    pctx.fillStyle = pg;
+    pctx.fillRect(0, 0, 64, 8);
+    const ptex = new THREE.CanvasTexture(pcv);
+    ptex.colorSpace = THREE.SRGBColorSpace;
+    const pathMat = new THREE.MeshLambertMaterial({ map: ptex, transparent: true, depthWrite: false });
+    const path = (x1, z1, x2, z2, w = 2.6) => {
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), pathMat);
+      m.rotation.order = 'YXZ';
+      m.rotation.y = Math.atan2(x2 - x1, z2 - z1);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set((x1 + x2) / 2, 0.012, (z1 + z2) / 2);
+      m.renderOrder = -2;
+      m.receiveShadow = true;
+      this.scene.add(m);
+    };
+    path(0, -MAP.half, 0, MAP.hall[1] - 3); // gate → konak
+    path(0, MAP.hall[1] + 4, 0, 11); // konak → south houses
+    path(MAP.wood.pile[0], 9, MAP.quarry.pile[0], 9); // east–west street
+    path(-7, 9, -7, 4, 2.2);
+    path(7, 9, 7, 4, 2.2);
     const road = new THREE.Mesh(new THREE.PlaneGeometry(5, 60), new THREE.MeshLambertMaterial({ color: 0xcdb48a, transparent: true, opacity: 0.85, depthWrite: false }));
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0.012, -MAP.half - 30);
