@@ -23,6 +23,9 @@ export const TEXT = {
   fed: 'doydu',
   fire: 'ATEŞLE!',
   openPass: 'GEÇİDİ AÇ',
+  breakGate: 'KAPIYI KIR',
+  raid: 'SALDIRI!',
+  towerStands: 'KULE DİRENİYOR!',
   newSoldiers: 'YENİ ASKERLER!',
   victory: 'GEÇİT AÇILDI!',
   victoryLine: 'Karargahını kur, ordunu büyüt!',
@@ -36,6 +39,7 @@ export const INFO = {
   hamal: { short: 'HAMAL', name: 'HAMAL', desc: 'Erzağı kazana o taşır', quest: 'HAMAL TUT' },
   kazan2: { short: 'KAZAN', name: 'ÇİFT KAZAN', desc: 'İki tas aynı anda dolar', quest: 'ÇİFT KAZAN' },
   cannon: { short: 'TOPÇU', name: 'TOPÇU MEVZİSİ', desc: 'Top mevziye çekilir', quest: 'TOPÇU MEVZİSİ' },
+  barut: { short: 'BARUT', name: 'BARUTHANE', desc: 'Topa kuleyi yıkacak güç', quest: 'BARUTHANE' },
 };
 
 export const FONT_TITLE = 'OWTitle, Georgia, "Times New Roman", serif';
@@ -44,7 +48,7 @@ export const FONT_UI = 'OWUi, "Arial Black", Arial, sans-serif';
 // economy: 1 sack → 1 ration, 1 ration → 2 akçe
 export const ECON = {
   akcePerRation: 2,
-  waves: [3, 4, 6], // hungry soldiers: at the start, after the porter, after the second cauldron
+  waves: [3, 4, 6, 8], // hungry soldiers: at the start, after the porter, after the second cauldron, after the sally
 };
 
 export const PLAYER = {
@@ -86,6 +90,11 @@ export const MAP = {
   banner: [-4.4, -9.8],
   covered: [6.4, -7.4], // cannon under a tarp
   mevzi: [4.4, -15.2],
+  barut: [9.6, -13.4], // the powder magazine
+  arrivePath: [
+    [6.4, 2.6],
+    [5.2, -5.7],
+  ], // newcomers walk around the kitchen, never through it
   ranks: -12.6, // first rank under the banner
   front: -22.5, // first rank in front of the pass
   pass: -31, // the palisade across the pass
@@ -97,6 +106,7 @@ export const PADS = [
   { id: 'hamal', kind: 'hamal', x: -5.3, z: 0.6, need: { gold: 6 } },
   { id: 'kazan2', kind: 'kazan2', x: MAP.kazans[1][0], z: MAP.kazans[1][1] + 0.1, need: { gold: 8 } },
   { id: 'cannon', kind: 'cannon', x: MAP.mevzi[0], z: MAP.mevzi[1], need: { gold: 12 } },
+  { id: 'barut', kind: 'barut', x: 8.4, z: -10.4, need: { gold: 16 } },
 ];
 
 export const COLORS = {

@@ -4,7 +4,7 @@ import { Environment } from '../world/Environment.js';
 import { MODELS, SIT_DROP } from '../world/Models.js';
 import { UnitBatch } from '../world/UnitBatch.js';
 import { Guide, Items, Pad } from '../world/Props.js';
-import { banner, cart, cauldron, counter, enemyTower, fieldCannon, hearth, mevzi, passGate, tarp, tent, waveFlag } from '../world/Town.js';
+import { banner, baruthane, cart, cauldron, counter, enemyTower, fieldCannon, hearth, mevzi, passGate, tarp, tent, waveFlag } from '../world/Town.js';
 import { Fx } from '../fx/Fx.js';
 import { JanissaryCrowd } from '../world/Janissaries.js';
 import { withDetail } from '../world/Detail.js';
@@ -43,12 +43,12 @@ export class Game {
     const mat = withDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.04 }), { strength: 0.12, scale: 2.2, ao: 0.7 });
     this.batches = {
       cook: new UnitBatch(this.scene, MODELS.cook(), 1, mat, { scale: 1.12 }),
-      jan: new UnitBatch(this.scene, MODELS.janissary(), 16, mat),
+      jan: new UnitBatch(this.scene, MODELS.janissary(), 24, mat),
       hamal: new UnitBatch(this.scene, MODELS.hamal(), 1, mat, { scale: 1.05 }),
-      enemy: new UnitBatch(this.scene, MODELS.enemy(), 8, mat),
+      enemy: new UnitBatch(this.scene, MODELS.enemy(), 18, mat),
     };
     // the Yeniçeri: the artist's .glb when it loaded, the built-in low-poly model otherwise
-    this.crowd = models.jan ? new JanissaryCrowd(this.scene, models.jan, 16) : null;
+    this.crowd = models.jan ? new JanissaryCrowd(this.scene, models.jan, 24) : null;
     this.items = new Items(this.scene);
     this.fx = new Fx(this.scene);
     this.guide = new Guide(this.scene);
@@ -87,6 +87,7 @@ export class Game {
     this.tarp = put(tarp(), MAP.covered[0], MAP.covered[1], 0.9);
     this.gate = put(passGate(MAP.cliffGap * 2 + 3), 0, MAP.pass);
     this.tower = put(enemyTower(), MAP.tower[0], MAP.tower[1]);
+    this.barut = put(baruthane(), MAP.barut[0], MAP.barut[1], -0.5);
     this.towerParts = this.tower.parts.map((p) => ({ m: p, y0: p.position.y }));
   }
 
@@ -197,7 +198,12 @@ export class Game {
     this.pads = PADS.map((def) => new Pad(this.scene, def));
     if (this.firePad) this.scene.remove(this.firePad.plane);
     this.firePad = new Pad(this.scene, { id: 'fire', kind: 'fire', x: MAP.mevzi[0] + 0.6, z: MAP.mevzi[1] + 3.1, need: {} });
-    this.fired = false;
+    this.shots = 0;
+    this.battleOver = false;
+    this.gateDown = false;
+    this.barut.base.visible = false;
+    this.barut.house.visible = false;
+    this.cannon.barrel.scale.setScalar(1);
     this.hud.reset();
     this.hud.coins(0);
     this.hud.showCta(true);
@@ -324,6 +330,7 @@ export class Game {
     this.updateSoldiers(dt);
     this.updateFlyers(dt);
     this.updateCollapse(dt);
+    this.updateBattle(dt);
     this.updateGuide();
     for (const p of this.pads) p.update(this.time, dt);
     this.firePad.update(this.time, dt);
@@ -672,7 +679,9 @@ export class Game {
       let tx = null;
       let tz = null;
       let speed = 3.6;
-      if (s.st === 'arrive' || s.st === 'wait') {
+      if (s.via?.length && dist(s.x, s.z, s.via[0][0], s.via[0][1]) < 0.45) s.via.shift();
+      if (s.st === 'arrive' && s.via?.length) [tx, tz] = s.via[0];
+      else if (s.st === 'arrive' || s.st === 'wait') {
         if (s.seat >= 0) [tx, tz] = MAP.seats[s.seat];
         else {
           [tx, tz] = [MAP.line[0] + li * MAP.lineStep[0], MAP.line[1] + li * MAP.lineStep[1]];
@@ -739,6 +748,7 @@ export class Game {
     for (let i = 0; i < n; i++) {
       const s = this.newSoldier(MAP.arrive[0] + rnd(-1, 1), MAP.arrive[1] + i * 0.9);
       s.delay = i * 0.3;
+      s.via = MAP.arrivePath.map((p) => [...p]);
     }
   }
 
@@ -789,6 +799,30 @@ export class Game {
       this.later(1.3, () => this.spawnWave(ECON.waves[2]));
     } else if (id === 'cannon') {
       this.rollCannon();
+    } else if (id === 'barut') {
+      // the magazine rises, powder kegs go to the cannon, the barrel is reloaded with a heavy charge
+      const h = this.barut.house;
+      h.visible = true;
+      this.tween(0.5, (k) => h.scale.set(1, Math.max(0.01, easeOutBack(k)), 1));
+      this.fx.bigDust(MAP.barut[0], 0.3, MAP.barut[1], 12, 1.8, 0xd8c8a0);
+      const c = this.cannon;
+      this.later(0.6, () => {
+        for (let i = 0; i < 4; i++)
+          this.later(i * 0.15, () =>
+            this.fly('sack', new THREE.Vector3(MAP.barut[0], 1.2, MAP.barut[1]), () => new THREE.Vector3(c.position.x, 1.3, c.position.z), 0.5, () => {
+              sfx.sack();
+              this.fx.sparkle(c.position.x, 0.5, c.position.z, 0xffc060, 4);
+            }, 2),
+          );
+      });
+      this.later(1.4, () => {
+        sfx.gateGood(true);
+        this.tween(0.5, (k) => c.barrel.scale.setScalar(1 + easeOutBack(k) * 0.3));
+        this.fx.sparkle(c.position.x, 0.5, c.position.z, 0xffe9a0, 24);
+        this.firePad.done = false;
+        this.firePad.show();
+        sfx.tap();
+      });
     }
   }
 
@@ -840,12 +874,13 @@ export class Game {
   }
 
   get fireReady() {
-    return this.firePad.active && !this.fired && this.state === 'play';
+    return this.firePad.active && !this.firePad.done && this.state === 'play';
   }
 
   fire() {
     if (!this.fireReady || !this.nearCannon()) return;
-    this.fired = true;
+    this.shots++;
+    const final = this.shots >= 2;
     this.firePad.done = true;
     this.state = 'fire';
     this.stateT = 0;
@@ -859,7 +894,13 @@ export class Game {
     for (let i = 0; i < 14; i++)
       this.fx.smoke.emit(muzzle.x, muzzle.y, muzzle.z, { vx: rnd(-1.5, 1.5) - Math.sin(yaw) * 5, vy: rnd(0.5, 2.5), vz: rnd(-1.5, 1.5) - Math.cos(yaw) * 5, color: 0xd8d2c6, size: rnd(1.0, 1.8), life: rnd(0.9, 1.5), grow: 2, alpha: 0.5 });
     sfx.boom(true);
-    this.shake = 0.5;
+    this.shake = final ? 0.7 : 0.5;
+    if (!final) {
+      // first shot: the gate of the pass
+      const to = new THREE.Vector3(0, 1.6, MAP.pass);
+      this.fx.balls.shoot(muzzle, to, 0.85, 3.5, () => this.gateShot(to));
+      return;
+    }
     const to = new THREE.Vector3(MAP.tower[0], 4.5, MAP.tower[1] + 1.2);
     this.fx.balls.shoot(muzzle, to, 1.0, 5, () => this.collapse(to));
   }
@@ -888,15 +929,7 @@ export class Game {
         this.fx.poof(e.x, e.y, e.z, C.enemyCoat);
       } else e.flee = true;
     }
-    // the gate falls in
-    const g = this.gate.gate;
-    this.later(0.35, () => {
-      this.tween(0.6, (k) => (g.rotation.x = -(k * k) * Math.PI * 0.48), () => {
-        this.fx.bigDust(0, 0.5, MAP.pass - 1.5, 20, 3, 0xbcae94);
-        sfx.boom(false);
-        this.shake = Math.max(this.shake, 0.4);
-      });
-    });
+    this.later(0.35, () => this.dropGate());
     this.later(1.2, () => {
       this.hud.callout(TEXT.victory, 'gold mid');
       sfx.victory();
@@ -915,6 +948,155 @@ export class Game {
       if (this.ended) return;
       this.ended = true;
       this.onEnd(true);
+    });
+  }
+
+  dropGate() {
+    if (this.gateDown) return;
+    this.gateDown = true;
+    const g = this.gate.gate;
+    this.tween(0.6, (k) => (g.rotation.x = -(k * k) * Math.PI * 0.48), () => {
+      this.fx.bigDust(0, 0.5, MAP.pass - 1.5, 20, 3, 0xbcae94);
+      sfx.boom(false);
+      this.shake = Math.max(this.shake, 0.4);
+    });
+  }
+
+  /* ── first shot: the gate breaks and the garrison sallies out ── */
+  gateShot(at) {
+    sfx.boom(true);
+    this.shake = 0.6;
+    this.fx.glow.emit(at.x, at.y, at.z, { color: 0xffb060, size: 6, life: 0.25, grow: 2 });
+    this.fx.bigDust(at.x, 1, at.z, 24, 3, 0xbcae94);
+    for (let i = 0; i < 24; i++)
+      this.fx.debris.emit(at.x + rnd(-2, 2), rnd(0.5, 3), at.z, { vx: rnd(-6, 6), vy: rnd(3, 8), vz: rnd(1, 7), color: i % 2 ? 0x7a5636 : 0x5d3f24, sx: 0.5, sy: 0.12, sz: 0.2, life: 2 });
+    this.dropGate();
+    this.later(0.7, () => {
+      this.state = 'battle';
+      this.stateT = 0;
+      this.hud.callout(TEXT.raid, 'red');
+      sfx.charge();
+      for (const e of this.enemies) if (e.alive && !e.top) Object.assign(e, { hp: 1.6, fight: true });
+      for (let i = 0; i < 8; i++) this.enemies.push({ x: rnd(-2.2, 2.2), y: 0, z: MAP.pass - 2.5 - i * 0.7, ph: rnd(0, 6), alive: true, hp: 1.6, fight: true });
+      for (const s of this.soldiers) if (s.st === 'rank' || s.st === 'go') s.st = 'fight';
+    });
+  }
+
+  updateBattle(dt) {
+    if (this.state !== 'battle') return;
+    const J = this.soldiers.filter((s) => s.st === 'fight');
+    const E = this.enemies.filter((e) => e.alive && e.fight && !e.dying);
+    const nearest = (u, list) => {
+      let best = null;
+      let bd = 1e9;
+      for (const o of list) {
+        const d = (o.x - u.x) ** 2 + (o.z - u.z) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = o;
+        }
+      }
+      return best;
+    };
+    const step = (u, t, speed) => {
+      const dx = t.x - u.x;
+      const dz = t.z - u.z;
+      const d = Math.hypot(dx, dz);
+      u.yaw = turn(u.yaw ?? 0, yawFor(dx, dz), Math.min(1, dt * 10));
+      if (d > 1.15) {
+        const sp = Math.min(d - 1.1, speed * dt);
+        u.x += (dx / d) * sp;
+        u.z += (dz / d) * sp;
+        u.walking = true;
+        u.attacking = false;
+        return false;
+      }
+      u.walking = false;
+      u.attacking = true;
+      return true;
+    };
+    let clashes = 0;
+    for (const e of E) {
+      const t = nearest(e, J);
+      if (t) step(e, t, 4.4);
+      e.ph += dt * 8;
+    }
+    for (const s of J) {
+      const t = nearest(s, E);
+      if (!t) {
+        s.walking = false;
+        s.attacking = false;
+        continue;
+      }
+      if (step(s, t, 4.8)) {
+        t.hp -= dt * 0.85;
+        t.flash = Math.max(t.flash || 0, 0.4);
+        clashes++;
+      }
+      s.ph += dt * 8;
+    }
+    // keep them from standing inside each other
+    const all = [...J, ...E];
+    for (let i = 0; i < all.length; i++)
+      for (let j = i + 1; j < all.length; j++) {
+        const a = all[i];
+        const b = all[j];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.01 && d < 0.85) {
+          const push = (0.85 - d) * 0.5;
+          a.x -= (dx / d) * push;
+          a.z -= (dz / d) * push;
+          b.x += (dx / d) * push;
+          b.z += (dz / d) * push;
+        }
+      }
+    if (clashes && Math.random() < dt * Math.min(8, clashes * 1.5)) {
+      const s = J[Math.floor(Math.random() * J.length)];
+      if (s?.attacking) this.fx.clash(s.x - Math.sin(s.yaw) * 0.7, 1.4, s.z - Math.cos(s.yaw) * 0.7);
+      sfx.clash();
+    }
+    for (const e of E) {
+      if (e.hp > 0) continue;
+      e.dying = 0.001;
+      sfx.poof();
+    }
+    for (const e of this.enemies) {
+      if (!e.dying || !e.alive) continue;
+      e.dying += dt;
+      if (e.dying > 0.75) {
+        e.alive = false;
+        this.fx.poof(e.x, 0, e.z, C.enemyCoat);
+      }
+    }
+    const left = this.enemies.some((e) => e.alive && e.fight);
+    if ((!left || this.stateT > 14) && !this.battleOver) {
+      this.battleOver = true;
+      for (const e of this.enemies) if (e.fight) e.alive = false;
+      for (const s of J) {
+        s.cheer = 1.4;
+        s.attacking = false;
+        s.walking = false;
+      }
+      this.later(1.3, () => this.afterBattle());
+    }
+  }
+
+  afterBattle() {
+    this.state = 'play';
+    this.stateT = 0;
+    for (const s of this.soldiers) if (s.st === 'fight') s.st = 'go';
+    this.hud.callout(TEXT.towerStands, 'red small');
+    this.stage = Math.max(this.stage, 3);
+    // reinforcements arrive hungry; the powder magazine is the next build
+    this.later(1.2, () => this.spawnWave(ECON.waves[3]));
+    this.later(0.6, () => {
+      const base = this.barut.base;
+      base.visible = true;
+      this.tween(0.4, (k) => base.scale.setScalar(Math.max(0.01, easeOutBack(k))));
+      this.pads[3].show();
+      sfx.tap();
     });
   }
 
@@ -1005,6 +1187,7 @@ export class Game {
       let mode = 2;
       let y = 0;
       if (s.walking) mode = 0;
+      else if (s.st === 'fight' && s.attacking) mode = 3;
       else if (s.st === 'eat') {
         mode = 5;
         y = -SIT_DROP;
@@ -1024,7 +1207,16 @@ export class Game {
     this.crowd?.hideFrom(this.soldiers.length);
 
     B.enemy.begin();
-    for (const e of this.enemies) if (e.alive) B.enemy.push(e.x, e.y, e.z, e.flee ? 0 : ENEMY_YAW, (e.ph += dt * (e.flee ? 0 : 1.5)), e.flee ? 0 : 2);
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      e.flash = Math.max(0, (e.flash || 0) - dt * 4);
+      let mode = 2;
+      if (e.flee || e.walking) mode = 0;
+      else if (e.attacking) mode = 3;
+      if (!e.fight && !e.flee) e.ph += dt * 1.5;
+      const tilt = e.dying ? Math.min(1, e.dying / 0.45) * 1.45 : 0;
+      B.enemy.push(e.x, e.y - (e.dying ? Math.min(1, e.dying / 0.45) * 0.3 : 0), e.z, e.flee ? 0 : e.fight ? e.yaw ?? ENEMY_YAW : ENEMY_YAW, e.ph, mode, 1, e.flash, tilt);
+    }
     B.enemy.end();
 
     // hungry bubbles
@@ -1094,7 +1286,9 @@ export class Game {
     const iso = (x, z, h, d) => [new THREE.Vector3(x + d * 0.26, h, z + d * 0.97), new THREE.Vector3(x, 0, z)];
     let pos;
     let look;
-    if (st === 'fire') {
+    if (st === 'battle' || (st === 'fire' && this.shots < 2)) {
+      [pos, look] = iso(0.5, -26, lerp(21, 15, t), lerp(16, 13, t));
+    } else if (st === 'fire') {
       [pos, look] = iso(0.8, -29, lerp(25, 18, t), lerp(19, 15, t));
     } else if (st === 'won') {
       [pos, look] = iso(0, -20, lerp(44, 30, t), lerp(34, 26, t));
@@ -1175,7 +1369,7 @@ export class Game {
     const P = this.pasha;
     const o = this.obj;
     const now = o ? TEXT.tips[o.tip] || '' : '';
-    if (this.fireReady) return { step: '⚔', title: TEXT.openPass, sub: TEXT.tips.fire, icon: 'battle', k: 1 };
+    if (this.fireReady) return { step: '⚔', title: this.shots ? TEXT.openPass : TEXT.breakGate, sub: TEXT.tips.fire, icon: 'battle', k: 1 };
     const next = this.pads.find((p) => !p.done);
     if (!next || !next.active || this.fed < ECON.waves[0]) {
       const n = ECON.waves[0];

@@ -557,6 +557,35 @@ export function passGate(w) {
   return g;
 }
 
+/* baruthane: a small stone powder magazine with a lead dome; g.base shows first, g.house when bought */
+export function baruthane() {
+  const g = new THREE.Group();
+  const base = new Builder()
+    .add(P.box(3.6, 0.3, 3.2), T.stoneDark, [0, 0.15, 0])
+    .add(P.box(3.0, 0.5, 0.3), T.stone, [0, 0.4, -1.3])
+    .add(P.box(0.3, 0.5, 2.6), T.stone, [-1.35, 0.4, 0])
+    .add(P.box(0.3, 0.5, 2.6), T.stone, [1.35, 0.4, 0]);
+  g.base = mk(base);
+  g.add(g.base);
+  const b = new Builder();
+  b.add(P.box(2.9, 2.1, 2.7), T.stone, [0, 1.2, 0]);
+  for (const y of [0.7, 1.4]) b.add(P.box(2.92, 0.05, 2.72), T.stoneDark, [0, y, 0]);
+  b.add(P.cyl(1.25, 1.35, 0.4, 12), T.stoneDark, [0, 2.45, 0]);
+  b.add(P.halfSph(1.3), T.slate, [0, 2.6, 0], [0, 0, 0], [1, 0.85, 1]);
+  b.add(P.cyl(0.05, 0.05, 0.5, 6), 0xd9a63a, [0, 3.85, 0]);
+  b.add(P.sph(0.1, 8, 6), 0xd9a63a, [0, 4.1, 0]);
+  b.add(P.box(0.9, 1.4, 0.1), T.woodDark, [0, 0.95, 1.36]);
+  b.add(P.box(0.3, 0.3, 0.06), T.iron, [0, 1.95, 1.38]);
+  for (const [x, z] of [[-1.9, 1.2], [-1.6, 1.8], [1.8, 1.5], [2.2, 0.8]]) {
+    b.add(P.cyl(0.32, 0.32, 0.7, 12), T.wood, [x, 0.35, z]);
+    b.add(P.torus(0.33, 0.035, 5, 12), T.iron, [x, 0.15, z], [Math.PI / 2, 0, 0]);
+    b.add(P.torus(0.33, 0.035, 5, 12), T.iron, [x, 0.55, z], [Math.PI / 2, 0, 0]);
+  }
+  g.house = mk(b);
+  g.add(g.house);
+  return g;
+}
+
 /* rocky ridge: a row of big flat-shaded boulders between x0 and x1 */
 export function ridge(x0, x1, z, depth, hMin, hMax, seed = 1) {
   let s = seed;
