@@ -5,6 +5,8 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 export default defineConfig({
   base: './',
   plugins: [viteSingleFile()],
+  // 3D unit models (.glb) are imported as inline data URLs
+  assetsInclude: ['**/*.glb'],
   server: {
     port: 5178,
     open: true,

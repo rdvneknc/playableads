@@ -6,6 +6,7 @@ import { UnitBatch } from '../world/UnitBatch.js';
 import { Guide, Items, Pad } from '../world/Props.js';
 import { banner, cart, cauldron, counter, enemyTower, fieldCannon, hearth, mevzi, passGate, tarp, tent, waveFlag } from '../world/Town.js';
 import { Fx } from '../fx/Fx.js';
+import { JanissaryCrowd } from '../world/Janissaries.js';
 import { withDetail } from '../world/Detail.js';
 import { sfx } from '../audio/Sfx.js';
 
@@ -32,7 +33,7 @@ const RANK_COLS = 5;
 const ENEMY_YAW = Math.PI;
 
 export class Game {
-  constructor(renderer, hud, { onEnd }) {
+  constructor(renderer, hud, { onEnd, models = {} }) {
     this.renderer = renderer;
     this.hud = hud;
     this.onEnd = onEnd;
@@ -46,6 +47,8 @@ export class Game {
       hamal: new UnitBatch(this.scene, MODELS.hamal(), 1, mat, { scale: 1.05 }),
       enemy: new UnitBatch(this.scene, MODELS.enemy(), 8, mat),
     };
+    // the Yeniçeri: the artist's .glb when it loaded, the built-in low-poly model otherwise
+    this.crowd = models.jan ? new JanissaryCrowd(this.scene, models.jan, 16) : null;
     this.items = new Items(this.scene);
     this.fx = new Fx(this.scene);
     this.guide = new Guide(this.scene);
@@ -592,6 +595,10 @@ export class Game {
   }
 
   handPos(s) {
+    if (this.crowd) {
+      const p = this.crowd.hand(this.soldiers.indexOf(s), new THREE.Vector3());
+      if (p) return p.setY(p.y + 0.06);
+    }
     return new THREE.Vector3(s.x - Math.sin(s.yaw) * 0.45, 1.12 - SIT_DROP, s.z - Math.cos(s.yaw) * 0.45);
   }
 
@@ -1010,9 +1017,11 @@ export class Game {
       if (s.st === 'march' && s.delay > 0) mode = 3;
       if (!s.walking && s.st === 'rank') s.ph += dt * 1.5;
       if (mode === 3) s.ph += dt * 6;
-      B.jan.push(s.x, y, s.z, s.yaw, s.ph, mode);
+      if (this.crowd) this.crowd.update(this.soldiers.indexOf(s), s.x, s.z, s.yaw, mode === 5 && s.flip ? 6 : mode, dt, s.st === 'march' ? 3.4 : 3.8);
+      else B.jan.push(s.x, y, s.z, s.yaw, s.ph, mode);
     }
     B.jan.end();
+    this.crowd?.hideFrom(this.soldiers.length);
 
     B.enemy.begin();
     for (const e of this.enemies) if (e.alive) B.enemy.push(e.x, e.y, e.z, e.flee ? 0 : ENEMY_YAW, (e.ph += dt * (e.flee ? 0 : 1.5)), e.flee ? 0 : 2);

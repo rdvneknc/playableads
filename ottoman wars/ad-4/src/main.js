@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { Game } from './game/Game.js';
 import { Hud } from './ui/Hud.js';
+import { loadJanissary } from './world/Janissaries.js';
 import { sfx } from './audio/Sfx.js';
 import { openStore, notifyGameEnd } from './ad/cta.js';
 import { startWhenReady, onPauseChange, onVolumeChange, notifyGameReady, allowRotation } from './ad/lifecycle.js';
@@ -110,7 +111,14 @@ startWhenReady(async () => {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   hud = new Hud(document.getElementById('hud'), { onCta: () => openStore(), onFire: () => game?.fire() });
+  let jan = null;
+  try {
+    jan = await loadJanissary();
+  } catch (e) {
+    console.warn('yeniceri.glb failed to load, using the built-in model', e);
+  }
   game = new Game(renderer, hud, {
+    models: { jan },
     onEnd: () => {
       notifyGameEnd();
       hud.endCard();
