@@ -412,6 +412,10 @@ export function fieldCannon() {
   barrel.rotation.x = 0.12;
   g.add(barrel);
   g.barrel = barrel;
+  g.wheelSign = -1;
+  g.recoil = (k) => (barrel.position.z = -0.1 + k * 0.45);
+  g.muzzleFwd = 2.2;
+  g.muzzleY = 1.45;
   return g;
 }
 

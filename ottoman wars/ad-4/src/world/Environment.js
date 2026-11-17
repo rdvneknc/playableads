@@ -64,8 +64,9 @@ function grassTexture() {
 export const SUN_DIR = new THREE.Vector3(-0.45, 0.85, 0.3).normalize();
 
 export class Environment {
-  constructor(scene) {
+  constructor(scene, tentFactory = null) {
     this.scene = scene;
+    this.tentFactory = tentFactory; // the artist's çadır when it loaded
     scene.fog = new THREE.Fog(0xcfe0ea, 70, 210);
     this.sky();
     this.lights();
@@ -182,7 +183,7 @@ export class Environment {
     };
     // the army camp: rows of tents around the kitchen
     const tents = [[-11.5, -6.5], [-12.5, 2], [-10.5, 8], [-4.5, 10.5], [1.5, 10.5], [13, 6.5], [12.5, -1.5], [11.5, -8], [-12, -13], [-8, -16], [14.5, -14], [-17, -4], [-17, 6], [17.5, 2], [5, 13.5]];
-    for (const [x, z] of tents) add(tent(), x, z, Math.atan2(-x, -z) + rr(-0.3, 0.3));
+    for (const [x, z] of tents) add(this.tentFactory ? this.tentFactory() : tent(), x, z, Math.atan2(-x, -z) + rr(-0.3, 0.3));
     const t = tree();
     const spots = [];
     for (let i = 0; i < 90; i++) {

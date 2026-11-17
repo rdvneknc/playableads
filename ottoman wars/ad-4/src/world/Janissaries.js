@@ -2,37 +2,101 @@ import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import yeniceriUrl from '../assets/yeniceri.glb';
+import yeniceriMaviUrl from '../assets/yeniceri-mavi.glb';
+import asciUrl from '../assets/asci.glb';
+import cadirUrl from '../assets/cadir.glb';
+import arabaUrl from '../assets/erzak-arabasi.glb';
+import topUrl from '../assets/top.glb';
 
-// The Yeniçeri model (.glb, skinned, clips: Idle / Walk / Attack / Die), inlined in the build.
-export async function loadJanissary() {
-  const b64 = yeniceriUrl.slice(yeniceriUrl.indexOf(',') + 1);
-  const bin = atob(b64);
+// The artist's .glb models, inlined in the build as data URLs.
+//   jan    – red Yeniçeri (our soldiers)      Idle / Walk / Attack / Die
+//   enemy  – blue Yeniçeri (the pass garrison) Idle / Walk / Attack / Die
+//   cook   – the player (aşçı)                 Idle / Walk / Carry
+//   tent, cart, cannon – static props (cart & cannon have separate wheels / barrel)
+const URLS = { jan: yeniceriUrl, enemy: yeniceriMaviUrl, cook: asciUrl, tent: cadirUrl, cart: arabaUrl, cannon: topUrl };
+
+function parseGlb(url) {
+  const bin = atob(url.slice(url.indexOf(',') + 1));
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Promise((resolve, reject) => new GLTFLoader().parse(bytes.buffer, '', resolve, reject));
 }
 
+// every model is optional: whatever fails to load falls back to the built-in look
+export async function loadModels() {
+  const out = {};
+  await Promise.all(
+    Object.entries(URLS).map(async ([k, url]) => {
+      try {
+        out[k] = await parseGlb(url);
+      } catch (e) {
+        console.warn(`${k}.glb failed to load, using the built-in model`, e);
+      }
+    }),
+  );
+  return out;
+}
+
+// all the artist's models share one unit scale; this maps a 2.3 m tall Yeniçeri onto the game
+export function unitScale(gltf, height = 2.3) {
+  const size = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3());
+  return height / Math.max(0.01, size.y);
+}
+
+const shadowed = (o) =>
+  o.traverse((m) => {
+    if (m.isMesh) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    }
+  });
+
+// a static prop turned to face -Z like everything else in the game
+export function staticModel(gltf, scale) {
+  const g = new THREE.Group();
+  const m = gltf.scene.clone(true);
+  m.scale.setScalar(scale);
+  m.rotation.y = Math.PI;
+  shadowed(m);
+  g.add(m);
+  g.model = m;
+  return g;
+}
+
+// the cannon: same interface as the built-in fieldCannon (barrel, wheels, recoil, muzzle)
+export function cannonModel(gltf, scale) {
+  const g = staticModel(gltf, scale);
+  const barrel = g.model.getObjectByName('Namlu');
+  g.barrel = barrel;
+  g.wheels = ['TekerlekSol', 'TekerlekSag'].map((n) => g.model.getObjectByName(n)).filter(Boolean);
+  g.wheelSign = -1;
+  const z0 = barrel.position.z;
+  g.recoil = (k) => (barrel.position.z = z0 - k * 0.35);
+  g.muzzleFwd = 1.5 * scale;
+  g.muzzleY = 1.2 * scale;
+  return g;
+}
+
 const _e = new THREE.Euler();
+const _q = new THREE.Quaternion();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 
-// A pool of animated soldiers. Poses on top of the clips: sitting on the heels (diz çökmüş)
-// and holding a bowl with both hands.
-export class JanissaryCrowd {
-  constructor(scene, gltf, count, height = 2.3) {
+// A pool of animated (skinned) characters. On top of the clips it can pose a unit
+// sitting on its heels (diz çökmüş) and holding a bowl with both hands.
+export class SkinnedCrowd {
+  constructor(scene, gltf, count, scale, { hide = [] } = {}) {
     this.units = [];
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const size = box.getSize(new THREE.Vector3());
-    const scale = height / Math.max(0.01, size.y);
     const clips = Object.fromEntries(gltf.animations.map((c) => [c.name, c]));
     for (let i = 0; i < count; i++) {
       const model = cloneSkinned(gltf.scene);
       model.scale.setScalar(scale);
-      model.rotation.y = Math.PI; // the model faces +Z, the game uses -Z as forward
+      model.rotation.y = Math.PI; // the models face +Z, the game uses -Z as forward
       model.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
           o.frustumCulled = false;
+          if (hide.some((h) => o.name.includes(h))) o.visible = false;
         }
       });
       const root = new THREE.Group();
@@ -41,78 +105,76 @@ export class JanissaryCrowd {
       scene.add(root);
       const mixer = new THREE.AnimationMixer(model);
       const actions = {};
-      for (const name of ['Idle', 'Walk', 'Attack']) {
-        if (!clips[name]) continue;
-        const a = mixer.clipAction(clips[name]);
-        a.play();
-        a.setEffectiveWeight(0);
-        a.time = Math.random() * clips[name].duration;
+      for (const [name, clip] of Object.entries(clips)) {
+        const a = mixer.clipAction(clip);
+        if (name === 'Die') {
+          a.setLoop(THREE.LoopOnce, 1);
+          a.clampWhenFinished = true;
+        }
         actions[name] = a;
       }
-      const bone = (n) => model.getObjectByName(n);
       const bones = {};
-      for (const n of ['Pelvis', 'Spine', 'ThighL', 'ShinL', 'FootL', 'ThighR', 'ShinR', 'FootR', 'UpperArmSword', 'ForearmSword', 'HandSword', 'UpperArmShield', 'ForearmShield', 'HandShield']) bones[n] = bone(n);
+      model.traverse((o) => {
+        if (o.isBone) bones[o.name] = o;
+      });
       const pelvisY = bones.Pelvis ? bones.Pelvis.position.y : 1;
       this.units.push({ root, model, mixer, actions, bones, pelvisY, cur: null, sit: 0, hold: 0 });
     }
   }
 
-  // mode: 0 walk · 2 idle · 3 cheer (sword up) · 4 sit · 5 sit holding a bowl · 6 sit flipping an empty bowl
-  update(i, x, z, yaw, mode, dt, walkSpeed = 3.6) {
+  // anim: clip name; opts.sit / opts.hold add the seated pose and the bowl-holding arms
+  update(i, x, y, z, yaw, anim, dt, { speed = 1, sit = false, hold = false } = {}) {
     const u = this.units[i];
     if (!u) return;
     u.root.visible = true;
-    u.root.position.set(x, 0, z);
+    u.root.position.set(x, y, z);
     u.root.rotation.y = yaw;
-    const want = mode === 0 ? 'Walk' : mode === 3 ? 'Attack' : 'Idle';
-    if (want !== u.cur && u.actions[want]) {
-      for (const [n, a] of Object.entries(u.actions)) a.setEffectiveWeight(n === want ? 1 : 0);
-      if (u.cur) {
-        const from = u.actions[u.cur];
-        from.setEffectiveWeight(1);
-        from.crossFadeTo(u.actions[want], 0.18, false);
-        u.actions[want].setEffectiveWeight(1);
+    const want = u.actions[anim] ? anim : 'Idle';
+    if (want !== u.cur) {
+      const next = u.actions[want];
+      if (next) {
+        next.enabled = true;
+        next.setEffectiveTimeScale(1);
+        next.setEffectiveWeight(1);
+        if (want === 'Die') next.reset();
+        else if (!next.isRunning()) next.time = Math.random() * next.getClip().duration;
+        next.play();
+        if (u.cur && u.actions[u.cur]) u.actions[u.cur].crossFadeTo(next, 0.18, false);
       }
       u.cur = want;
     }
-    if (u.actions.Walk) u.actions.Walk.timeScale = walkSpeed / 2.6;
+    const a = u.actions[want];
+    if (a && want !== 'Die') a.timeScale = speed;
     u.mixer.update(dt);
-    const sitting = mode >= 4;
-    u.sit += ((sitting ? 1 : 0) - u.sit) * Math.min(1, dt * 10);
-    u.hold += ((mode === 5 || mode === 6 ? 1 : 0) - u.hold) * Math.min(1, dt * 10);
-    this.pose(u, mode, dt);
+    u.sit += ((sit ? 1 : 0) - u.sit) * Math.min(1, dt * 10);
+    u.hold += ((hold ? 1 : 0) - u.hold) * Math.min(1, dt * 10);
+    this.pose(u);
   }
 
-  pose(u, mode) {
+  pose(u) {
     const B = u.bones;
     const k = u.sit;
+    const set = (b, x, y, z, w) => {
+      if (!b) return;
+      _e.set(x, y, z);
+      b.quaternion.slerp(_q.setFromEuler(_e), w);
+    };
     if (k > 0.01 && B.Pelvis) {
       // kneel and sit back on the heels
       B.Pelvis.position.y = u.pelvisY - k * u.pelvisY * 0.62;
-      const set = (b, x, y, z) => {
-        if (!b) return;
-        _e.set(x * k, y * k, z * k);
-        const q = new THREE.Quaternion().setFromEuler(_e);
-        b.quaternion.slerp(q, k);
-      };
-      set(B.ThighL, -1.45, 0, 0.08);
-      set(B.ThighR, -1.45, 0, -0.08);
-      set(B.ShinL, 2.75, 0, 0);
-      set(B.ShinR, 2.75, 0, 0);
-      set(B.FootL, -0.9, 0, 0);
-      set(B.FootR, -0.9, 0, 0);
+      set(B.ThighL, -1.45 * k, 0, 0.08 * k, k);
+      set(B.ThighR, -1.45 * k, 0, -0.08 * k, k);
+      set(B.ShinL, 2.75 * k, 0, 0, k);
+      set(B.ShinR, 2.75 * k, 0, 0, k);
+      set(B.FootL, -0.9 * k, 0, 0, k);
+      set(B.FootR, -0.9 * k, 0, 0, k);
     }
     const h = u.hold;
     if (h > 0.01) {
-      const set = (b, x, y, z) => {
-        if (!b) return;
-        _e.set(x, y, z);
-        b.quaternion.slerp(new THREE.Quaternion().setFromEuler(_e), h);
-      };
-      set(B.UpperArmSword, -1.0, 0, 0.35);
-      set(B.ForearmSword, -0.9, 0, 0);
-      set(B.UpperArmShield, -1.0, 0, -0.35);
-      set(B.ForearmShield, -0.9, 0, 0);
+      set(B.UpperArmSword, -1.0, 0, 0.35, h);
+      set(B.ForearmSword, -0.9, 0, 0, h);
+      set(B.UpperArmShield, -1.0, 0, -0.35, h);
+      set(B.ForearmShield, -0.9, 0, 0, h);
     }
   }
 
@@ -123,6 +185,10 @@ export class JanissaryCrowd {
     u.bones.HandSword.getWorldPosition(_a);
     u.bones.HandShield.getWorldPosition(_b);
     return out.addVectors(_a, _b).multiplyScalar(0.5);
+  }
+
+  hide(i) {
+    if (this.units[i]) this.units[i].root.visible = false;
   }
 
   hideFrom(n) {

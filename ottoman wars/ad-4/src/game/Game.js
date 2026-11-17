@@ -6,7 +6,7 @@ import { UnitBatch } from '../world/UnitBatch.js';
 import { Guide, Items, Pad } from '../world/Props.js';
 import { banner, baruthane, cart, cauldron, counter, enemyTower, fieldCannon, hearth, mevzi, passGate, tarp, tent, waveFlag } from '../world/Town.js';
 import { Fx } from '../fx/Fx.js';
-import { JanissaryCrowd } from '../world/Janissaries.js';
+import { SkinnedCrowd, cannonModel, staticModel, unitScale } from '../world/Janissaries.js';
 import { withDetail } from '../world/Detail.js';
 import { sfx } from '../audio/Sfx.js';
 
@@ -39,7 +39,11 @@ export class Game {
     this.onEnd = onEnd;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.5, 900);
-    this.env = new Environment(this.scene);
+    // the artist's .glb models (any of them may be missing: then the built-in look is used)
+    this.models = models;
+    const ref = models.jan || models.enemy;
+    this.unit = ref ? unitScale(ref) : 1.1;
+    this.env = new Environment(this.scene, models.tent ? () => staticModel(models.tent, this.unit) : null);
     const mat = withDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.04 }), { strength: 0.12, scale: 2.2, ao: 0.7 });
     this.batches = {
       cook: new UnitBatch(this.scene, MODELS.cook(), 1, mat, { scale: 1.12 }),
@@ -48,7 +52,9 @@ export class Game {
       enemy: new UnitBatch(this.scene, MODELS.enemy(), 18, mat),
     };
     // the Yeniçeri: the artist's .glb when it loaded, the built-in low-poly model otherwise
-    this.crowd = models.jan ? new JanissaryCrowd(this.scene, models.jan, 24) : null;
+    this.crowd = models.jan ? new SkinnedCrowd(this.scene, models.jan, 24, this.unit) : null;
+    this.enemyCrowd = models.enemy ? new SkinnedCrowd(this.scene, models.enemy, 18, this.unit) : null;
+    this.cookUnit = models.cook ? new SkinnedCrowd(this.scene, models.cook, 1, this.unit * 1.05, { hide: ['Cuval'] }) : null;
     this.items = new Items(this.scene);
     this.fx = new Fx(this.scene);
     this.guide = new Guide(this.scene);
@@ -78,12 +84,13 @@ export class Game {
       return { hearth: h, pot };
     });
     put(counter(), MAP.counter[0], MAP.counter[1], Math.PI / 2);
-    put(cart(), MAP.cart[0], MAP.cart[1], 0.5);
-    const ht = put(tent(), MAP.hamalTent[0], MAP.hamalTent[1], Math.atan2(MAP.pile[0] - MAP.hamalTent[0], MAP.pile[1] - MAP.hamalTent[1]));
+    const M = this.models;
+    put(M.cart ? staticModel(M.cart, this.unit * 1.25) : cart(), MAP.cart[0], MAP.cart[1], M.cart ? 1.2 : 0.5);
+    const ht = put(M.tent ? staticModel(M.tent, this.unit) : tent(), MAP.hamalTent[0], MAP.hamalTent[1], Math.atan2(MAP.pile[0] - MAP.hamalTent[0], MAP.pile[1] - MAP.hamalTent[1]));
     ht.scale.setScalar(1.15);
     this.banner = put(banner(), MAP.banner[0], MAP.banner[1]);
     put(mevzi(), MAP.mevzi[0], MAP.mevzi[1], yawFor(MAP.tower[0] - MAP.mevzi[0], MAP.tower[1] - MAP.mevzi[1]));
-    this.cannon = put(fieldCannon(), MAP.covered[0], MAP.covered[1], 0.9);
+    this.cannon = put(M.cannon ? cannonModel(M.cannon, this.unit * 1.2) : fieldCannon(), MAP.covered[0], MAP.covered[1], 0.9);
     this.tarp = put(tarp(), MAP.covered[0], MAP.covered[1], 0.9);
     this.gate = put(passGate(MAP.cliffGap * 2 + 3), 0, MAP.pass);
     this.tower = put(enemyTower(), MAP.tower[0], MAP.tower[1]);
@@ -855,7 +862,7 @@ export class Game {
       const e = easeInOut(k);
       c.position.lerpVectors(from, to, e);
       c.rotation.y = k < 0.25 ? turn(y0, travel, k * 4) : k > 0.7 ? turn(travel, aim, (k - 0.7) / 0.3) : travel;
-      for (const w of c.wheels) w.rotation.x = (-e * len) / 0.62;
+      for (const w of c.wheels) w.rotation.x = (c.wheelSign * e * len) / 0.62;
       if (Math.random() < 0.5) this.fx.dust(c.position.x, c.position.z, 1);
     }, () => {
       this.fx.bigDust(to.x, 0.3, to.z, 10, 1.6, 0xd8c8a0);
@@ -888,8 +895,8 @@ export class Game {
     const c = this.cannon;
     const yaw = c.rotation.y;
     const barrel = c.barrel;
-    this.tween(0.4, (k) => (barrel.position.z = -0.1 + Math.sin(k * Math.PI) * 0.45));
-    const muzzle = new THREE.Vector3(c.position.x - Math.sin(yaw) * 2.2, 1.45, c.position.z - Math.cos(yaw) * 2.2);
+    this.tween(0.4, (k) => c.recoil(Math.sin(k * Math.PI)));
+    const muzzle = new THREE.Vector3(c.position.x - Math.sin(yaw) * c.muzzleFwd, c.muzzleY, c.position.z - Math.cos(yaw) * c.muzzleFwd);
     this.fx.glow.emit(muzzle.x, muzzle.y, muzzle.z, { color: 0xffd28a, size: 4, life: 0.2, grow: 2.5 });
     for (let i = 0; i < 14; i++)
       this.fx.smoke.emit(muzzle.x, muzzle.y, muzzle.z, { vx: rnd(-1.5, 1.5) - Math.sin(yaw) * 5, vy: rnd(0.5, 2.5), vz: rnd(-1.5, 1.5) - Math.cos(yaw) * 5, color: 0xd8d2c6, size: rnd(1.0, 1.8), life: rnd(0.9, 1.5), grow: 2, alpha: 0.5 });
@@ -1065,7 +1072,7 @@ export class Game {
     for (const e of this.enemies) {
       if (!e.dying || !e.alive) continue;
       e.dying += dt;
-      if (e.dying > 0.75) {
+      if (e.dying > (this.enemyCrowd ? 1.6 : 0.75)) {
         e.alive = false;
         this.fx.poof(e.x, 0, e.z, C.enemyCoat);
       }
@@ -1173,7 +1180,8 @@ export class Game {
     const st = this.state;
     const end = st === 'won';
     B.cook.begin();
-    B.cook.push(P.x, 0, P.z, P.yaw, P.ph, end ? 3 : P.moving ? (P.stack ? 6 : 0) : P.stack ? 1 : 2);
+    if (this.cookUnit) this.cookUnit.update(0, P.x, 0, P.z, P.yaw, P.moving && !end ? (P.stack ? 'Carry' : 'Walk') : 'Idle', dt, { speed: P.moving ? 1.9 : 1 });
+    else B.cook.push(P.x, 0, P.z, P.yaw, P.ph, end ? 3 : P.moving ? (P.stack ? 6 : 0) : P.stack ? 1 : 2);
     B.cook.end();
     if (end) P.ph += dt * 6;
 
@@ -1200,7 +1208,7 @@ export class Game {
       if (s.st === 'march' && s.delay > 0) mode = 3;
       if (!s.walking && s.st === 'rank') s.ph += dt * 1.5;
       if (mode === 3) s.ph += dt * 6;
-      if (this.crowd) this.crowd.update(this.soldiers.indexOf(s), s.x, s.z, s.yaw, mode === 5 && s.flip ? 6 : mode, dt, s.st === 'march' ? 3.4 : 3.8);
+      if (this.crowd) this.crowd.update(this.soldiers.indexOf(s), s.x, 0, s.z, s.yaw, mode === 0 ? 'Walk' : mode === 3 ? 'Attack' : 'Idle', dt, { speed: mode === 0 ? (s.st === 'march' ? 3.4 : 3.8) / 2.6 : 1, sit: mode === 4 || mode === 5, hold: mode === 5 });
       else B.jan.push(s.x, y, s.z, s.yaw, s.ph, mode);
     }
     B.jan.end();
@@ -1215,9 +1223,18 @@ export class Game {
       else if (e.attacking) mode = 3;
       if (!e.fight && !e.flee) e.ph += dt * 1.5;
       const tilt = e.dying ? Math.min(1, e.dying / 0.45) * 1.45 : 0;
+      if (this.enemyCrowd) {
+        const anim = e.dying ? 'Die' : e.flee || e.walking ? 'Walk' : e.attacking ? 'Attack' : 'Idle';
+        this.enemyCrowd.update(this.enemies.indexOf(e), e.x, e.y, e.z, e.flee ? 0 : e.fight ? e.yaw ?? ENEMY_YAW : ENEMY_YAW, anim, dt, { speed: anim === 'Walk' ? (e.flee ? 5 : 4.4) / 2.6 : 1 });
+        continue;
+      }
       B.enemy.push(e.x, e.y - (e.dying ? Math.min(1, e.dying / 0.45) * 0.3 : 0), e.z, e.flee ? 0 : e.fight ? e.yaw ?? ENEMY_YAW : ENEMY_YAW, e.ph, mode, 1, e.flash, tilt);
     }
     B.enemy.end();
+    if (this.enemyCrowd) {
+      this.enemies.forEach((e, i) => !e.alive && this.enemyCrowd.hide(i));
+      this.enemyCrowd.hideFrom(this.enemies.length);
+    }
 
     // hungry bubbles
     let hi = 0;
