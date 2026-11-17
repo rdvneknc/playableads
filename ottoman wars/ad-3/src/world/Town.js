@@ -273,5 +273,6 @@ export function ghostOf(obj) {
     }
   });
   g.ghostMat = mat;
+  g.traverse((c) => (c.renderOrder = 1));
   return g;
 }

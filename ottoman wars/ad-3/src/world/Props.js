@@ -80,12 +80,38 @@ export class Pad {
     this.tex = new THREE.CanvasTexture(this.cv);
     this.tex.colorSpace = THREE.SRGBColorSpace;
     this.tex.anisotropy = 4;
-    this.plane = new THREE.Mesh(
+    // the pad = a raised golden frame + a soft glow + the painted face, drawn on top of the ground decals
+    this.plane = new THREE.Group();
+    this.plane.position.set(def.x, 0.06, def.z);
+    const glowCv = document.createElement('canvas');
+    glowCv.width = glowCv.height = 128;
+    const gctx = glowCv.getContext('2d');
+    const gg = gctx.createRadialGradient(64, 64, 20, 64, 64, 64);
+    gg.addColorStop(0, 'rgba(255,200,60,0.55)');
+    gg.addColorStop(1, 'rgba(255,200,60,0)');
+    gctx.fillStyle = gg;
+    gctx.fillRect(0, 0, 128, 128);
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.2, 5.2),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glowCv), transparent: true, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }),
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.renderOrder = 5;
+    this.glow = glow;
+    const face = new THREE.Mesh(
       new THREE.PlaneGeometry(3.4, 3.4),
       new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, toneMapped: false }),
     );
-    this.plane.rotation.x = -Math.PI / 2;
-    this.plane.position.set(def.x, 0.05, def.z);
+    face.rotation.x = -Math.PI / 2;
+    face.position.y = 0.02;
+    face.renderOrder = 6;
+    const fmat = new THREE.MeshBasicMaterial({ color: 0xffc83a, toneMapped: false });
+    const edge = (w, d, x, z) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), fmat);
+      m.position.set(x, 0.08, z);
+      return m;
+    };
+    this.plane.add(glow, face, edge(3.7, 0.16, 0, -1.78), edge(3.7, 0.16, 0, 1.78), edge(0.16, 3.7, -1.78, 0), edge(0.16, 3.7, 1.78, 0));
     this.plane.visible = false;
     scene.add(this.plane);
     this.draw();
@@ -97,7 +123,7 @@ export class Pad {
     ctx.clearRect(0, 0, 256, 256);
     ctx.shadowColor = 'rgba(255,200,60,0.9)';
     ctx.shadowBlur = 16;
-    ctx.fillStyle = 'rgba(22,12,4,0.86)';
+    ctx.fillStyle = 'rgba(22,12,4,0.95)';
     roundRect(ctx, 10, 10, 236, 236, 34);
     ctx.shadowBlur = 0;
     // progress fill from the bottom
@@ -224,6 +250,7 @@ export class Pad {
   update(t, dt) {
     if (!this.plane.visible) return;
     const target = this.done ? 0.01 : 1 + Math.sin(t * 4) * 0.03;
+    if (this.glow) this.glow.material.opacity = 0.65 + Math.sin(t * 4) * 0.35;
     const s = this.plane.scale.x + (target - this.plane.scale.x) * Math.min(1, dt * 10);
     this.plane.scale.setScalar(s);
     if (this.done && s < 0.05) this.plane.visible = false;

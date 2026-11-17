@@ -157,11 +157,13 @@ export class Environment {
     const yard = new THREE.Mesh(new THREE.PlaneGeometry(MAP.half * 2.3, MAP.half * 2.3), dirtMat);
     yard.rotation.x = -Math.PI / 2;
     yard.position.y = 0.01;
+    yard.renderOrder = -2;
     yard.receiveShadow = true;
     this.scene.add(yard);
     const road = new THREE.Mesh(new THREE.PlaneGeometry(5, 60), new THREE.MeshLambertMaterial({ color: 0xcdb48a, transparent: true, opacity: 0.85, depthWrite: false }));
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0.012, -MAP.half - 30);
+    road.renderOrder = -2;
     road.receiveShadow = true;
     this.scene.add(road);
   }
