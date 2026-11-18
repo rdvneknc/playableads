@@ -44,6 +44,19 @@ export class Hud {
     this.armyEl = el('div', 'army', root, '');
   }
 
+  // the cook's health bar, shown only once he has been hit
+  playerHp(visible, k, x, y) {
+    if (!this.hpEl) {
+      this.hpEl = el('div', 'php', this.layer, '<i></i>');
+      this.hpFill = this.hpEl.firstChild;
+    }
+    this.hpEl.style.display = visible ? 'block' : 'none';
+    if (!visible) return;
+    this.hpFill.style.width = `${Math.max(0, k) * 100}%`;
+    this.hpFill.classList.toggle('low', k < 0.35);
+    this.hpEl.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  }
+
   // army strip under the purse: counts by unit kind
   army(list) {
     this.armyEl.classList.toggle('show', !!list);

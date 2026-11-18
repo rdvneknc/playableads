@@ -1,4 +1,22 @@
-// Synthesised sound effects (no audio files). Starts on the first touch.
+// Sound effects: recorded samples (inlined mp3) where we have them, synthesised tones for the rest.
+// Starts on the first touch.
+import tufekUrl from '../assets/sfx/tufek.mp3';
+import adim1Url from '../assets/sfx/adim1.mp3';
+import adim2Url from '../assets/sfx/adim2.mp3';
+import kilicUrl from '../assets/sfx/kilic.mp3';
+import okUrl from '../assets/sfx/ok.mp3';
+import topUrl from '../assets/sfx/top.mp3';
+import toynak1Url from '../assets/sfx/toynak1.mp3';
+import toynak2Url from '../assets/sfx/toynak2.mp3';
+
+const SAMPLES = { tufek: tufekUrl, adim1: adim1Url, adim2: adim2Url, kilic: kilicUrl, ok: okUrl, top: topUrl, toynak1: toynak1Url, toynak2: toynak2Url };
+
+function dataUrlToBuffer(url) {
+  const bin = atob(url.slice(url.indexOf(',') + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
 
 class Sfx {
   constructor() {
@@ -7,6 +25,64 @@ class Sfx {
     this.noiseBuf = null;
     this.muted = false;
     this.last = {};
+    this.buffers = {};
+    this.flip = {};
+  }
+
+  loadSamples() {
+    for (const [name, url] of Object.entries(SAMPLES)) {
+      try {
+        const p = this.ctx.decodeAudioData(dataUrlToBuffer(url), (b) => (this.buffers[name] = b), () => {});
+        p?.catch?.(() => {});
+      } catch (e) {
+        /* keep the synthesised fallback */
+      }
+    }
+  }
+
+  // play a recorded sample; returns false if it is not decoded (yet)
+  sample(name, { gain = 0.5, rate = 1, delay = 0 } = {}) {
+    const buf = this.buffers[name];
+    if (!this.ok || !buf) return false;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate * (0.94 + Math.random() * 0.12);
+    const g = this.ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(this.master);
+    src.start(this.ctx.currentTime + delay);
+    return true;
+  }
+
+  // alternate between two recordings (left / right foot, hoof)
+  pair(a, b, opts) {
+    this.flip[a] = !this.flip[a];
+    return this.sample(this.flip[a] ? a : b, opts);
+  }
+
+  step() {
+    if (!this.gate('step', 140)) return;
+    this.pair('adim1', 'adim2', { gain: 0.32 });
+  }
+
+  hoof() {
+    if (!this.gate('hoof', 170)) return;
+    this.pair('toynak1', 'toynak2', { gain: 0.3 });
+  }
+
+  sword() {
+    if (!this.gate('sword', 110)) return;
+    if (!this.sample('kilic', { gain: 0.42 })) this.clash();
+  }
+
+  musket() {
+    if (!this.gate('musket', 90)) return;
+    if (!this.sample('tufek', { gain: 0.5 })) this.boom(false);
+  }
+
+  cannon() {
+    if (!this.gate('cannon', 200)) return;
+    if (!this.sample('top', { gain: 0.75 })) this.boom(true);
   }
 
   unlock() {
@@ -25,6 +101,7 @@ class Sfx {
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.loadSamples();
   }
 
   suspend() {
@@ -155,6 +232,7 @@ class Sfx {
 
   arrow() {
     if (!this.gate('arrow', 70)) return;
+    if (this.sample('ok', { gain: 0.35 })) return;
     this.noise(0.35, { gain: 0.05, freq: 2500, q: 6, sweep: 900 });
   }
 

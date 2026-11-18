@@ -22,6 +22,7 @@ export const TEXT = {
     pay: 'Akçeleri alana bırak.',
     attack: 'SALDIR alanında bekle, ordu saldırsın!',
     wait: 'Askerler yemeğini yiyor...',
+    loot: 'Düşen akçeleri topla. Dikkat, düşman sana da saldırır!',
   },
   feed: 'ASKERLERİ DOYUR',
   attack: 'SALDIR',
@@ -30,6 +31,8 @@ export const TEXT = {
   armyFull: 'ORDU HAZIR!',
   victoryOutpost: 'KARAKOL DÜŞTÜ!',
   defeat: 'ORDU GERİ ÇEKİLDİ',
+  armyLost: 'ORDU YOK OLDU! YENİ ORDU KUR',
+  playerDown: 'YARALANDIN!',
   needCannon: 'KAPI SAĞLAM! TOP LAZIM',
   loot: (n) => `+${n} GANİMET`,
   newSoldiers: 'YENİ ASKERLER!',
@@ -56,17 +59,25 @@ export const INFO = {
 export const FONT_TITLE = 'OWTitle, Georgia, "Times New Roman", serif';
 export const FONT_UI = 'OWUi, "Arial Black", Arial, sans-serif';
 
+// akçe dropped where enemies fall and buildings come down
+export const LOOT = { soldier: 1, tent: 2, tower: 3, gate: 4, keep: 8 };
+// the enemy sends a fresh soldier from a tent every `soldier` s, and rebuilds a ruin after `building` s
+export const REGEN = { soldier: 9, building: 30 };
+
 export const ECON = {
   akcePerSoldier: 2,
 };
 
 export const PLAYER = {
   speed: 6.4,
-  stackMax: 5,
+  stackMax: 6,
   pickEvery: 0.12,
   dropEvery: 0.16,
   payEvery: 0.07,
   reach: 2.0,
+  hp: 12, // the cook can be cut down near the enemy
+  respawn: 3,
+  regen: 3, // hp per second once out of the fight
   shootRange: 6,
   shootEvery: 0.42,
 };
@@ -74,13 +85,13 @@ export const PLAYER = {
 export const WORKER = { speed: 4.6, carry: 3, shootEvery: 0.6 };
 
 export const KITCHEN = {
-  cook: 0.6, // s per bowl
+  cook: 0.4, // s per bowl
   pileMax: 12, // bowls waiting at the food zone
-  eat: 1.1,
-  arriveEvery: 0.7,
+  eat: 0.8,
+  arriveEvery: 0.5,
 };
 
-export const DEER = { count: 5, hp: 2, walk: 1.3, run: 5.5, respawn: 2.2 };
+export const DEER = { count: 7, hp: 1, walk: 1.3, run: 5.5, respawn: 2.2 };
 
 export const MAP = {
   start: [-1.0, 7.4],
@@ -107,7 +118,7 @@ export const MAP = {
   avciPad: [-6.8, 6.4],
   garsonPad: [7.2, 2.8],
   buildings: { ordu10: [-11.6, -12.5], azap: [-12.2, -7.6], tufek: [-12.4, -2.4], top: [-11.6, 3.2] },
-  bounds: { x0: -15, x1: 15, z0: -19.5, z1: 21 },
+  bounds: { x0: -16, x1: 16, z0: -88, z1: 21 },
 };
 
 // unit stats (hp, damage per second, attack range, speed)
@@ -116,7 +127,7 @@ export const UNITS = {
   azap: { hp: 5, dps: 1.8, range: 9, speed: 4.2, shot: 0.9 },
   tuf: { hp: 6, dps: 4.0, range: 11, speed: 4.2, shot: 1.6 },
   top: { hp: 40, dps: 6.5, range: 15, speed: 3.2, shot: 2.4, splash: 2.2 },
-  enemy: { hp: 9, dps: 2.4, range: 1.25, speed: 4.2, aggro: 13 },
+  enemy: { hp: 9, dps: 2.4, range: 1.25, speed: 4.2, aggro: 13, aggroPlayer: 8 },
 };
 
 // army size after each upgrade
@@ -130,14 +141,14 @@ export const ARMY = {
 
 // the upgrade plot shows the next army upgrade once its outpost requirement is met
 export const UPGRADES = [
-  { id: 'ordu10', cost: 5, after: 0 },
-  { id: 'azap', cost: 12, after: 1 },
-  { id: 'tufek', cost: 14, after: 3 },
-  { id: 'top', cost: 16, after: 3 },
+  { id: 'ordu10', cost: 10, after: 0 },
+  { id: 'azap', cost: 25, after: 1 },
+  { id: 'tufek', cost: 35, after: 3 },
+  { id: 'top', cost: 45, after: 3 },
 ];
 export const WORKERS = [
-  { id: 'avci', cost: 6, at: MAP.avciPad },
-  { id: 'garson', cost: 6, at: MAP.garsonPad },
+  { id: 'avci', cost: 8, at: MAP.avciPad },
+  { id: 'garson', cost: 10, at: MAP.garsonPad },
 ];
 
 // enemy positions, north of the camp. building hp; `wall`: soldiers must pass through its gap.
@@ -183,8 +194,8 @@ export const OUTPOSTS = [
     keep: { x: 0, z: -77, hp: 45, soft: 0.3 },
     tents: [[-8, -76], [8, -76]],
     towers: [
-      { x: -8.5, z: -69.6, hp: 30, dps: 2.6, y: 3.6 },
-      { x: 8.5, z: -69.6, hp: 30, dps: 2.6, y: 3.6 },
+      { x: -8.5, z: -69.6, hp: 30, dps: 2.6, y: 3.6, range: 16 },
+      { x: 8.5, z: -69.6, hp: 30, dps: 2.6, y: 3.6, range: 16 },
     ],
     // inside the walls: they come out when the gate falls
     soldiers: [[-4, -72], [-2.6, -72.5], [-1.2, -72], [1.2, -72], [2.6, -72.5], [4, -72], [-3.3, -73.8], [-1.6, -74], [1.6, -74], [3.3, -73.8]],

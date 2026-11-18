@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three.module.min.js';
-import { ARMY, COLORS as C, DEER, ECON, INFO, KITCHEN, MAP, OUTPOSTS, PLAYER, TEXT, UNITS, UPGRADES, WORKER, WORKERS } from '../config.js';
+import { ARMY, COLORS as C, DEER, ECON, INFO, KITCHEN, LOOT, MAP, OUTPOSTS, PLAYER, REGEN, TEXT, UNITS, UPGRADES, WORKER, WORKERS } from '../config.js';
 import { Environment } from '../world/Environment.js';
 import { MODELS, SIT_DROP } from '../world/Models.js';
 import { UnitBatch } from '../world/UnitBatch.js';
@@ -101,7 +101,7 @@ export class Game {
         if (t.y) obj.position.y = t.y;
         this.put(obj, t.x, t.z, Math.PI);
         if (t.y) obj.position.y = t.y;
-        op.buildings.push({ kind: 'tower', x: t.x, z: t.z, r: 1.4, max: t.hp, dps: t.dps, obj, op: oi, soft: 0.6, topY: obj.topY + (t.y || 0) });
+        op.buildings.push({ kind: "tower", x: t.x, z: t.z, r: 1.4, max: t.hp, dps: t.dps, range: t.range || 10.5, obj, op: oi, soft: 0.6, topY: obj.topY + (t.y || 0) });
       }
       if (o.wall) {
         const w = o.wall;
@@ -134,7 +134,9 @@ export class Game {
     this.moved = false;
     this.tweens = [];
     this.flyers = [];
-    this.pasha = { x: MAP.start[0], z: MAP.start[1], yaw: Math.PI, moving: false, type: null, n: 0, pending: 0, pickT: 0, dropT: 0, payT: 0, shootT: 0, gold: 0 };
+    this.pasha = { x: MAP.start[0], z: MAP.start[1], yaw: Math.PI, moving: false, type: null, n: 0, pending: 0, pickT: 0, dropT: 0, payT: 0, shootT: 0, gold: 0, hp: PLAYER.hp, hurtT: 9, dead: false, respawnT: 0, stepD: 0 };
+    this.groundCoins = [];
+    this.campaign = false;
     this.input = { x: 0, z: 0 };
     this.kz = { queue: 0, cooking: false, t: 0, level: 0.35 };
     this.food = 0;
@@ -323,7 +325,10 @@ export class Game {
 
   slotPos(kind, i) {
     const R = MAP.ranks[kind];
-    if (kind === 'jan') return [(i % 5 - 2) * 1.25, R[1] + Math.floor(i / 5) * 1.3];
+    if (kind === 'jan') {
+      const per = this.cap.jan <= 6 ? Math.max(1, this.cap.jan) : Math.ceil(this.cap.jan / 2);
+      return [(i % per - (per - 1) / 2) * 1.25, R[1] + Math.floor(i / per) * 1.3];
+    }
     if (kind === 'azap') return [(i - 1.5) * 1.3, R[1]];
     if (kind === 'tuf') return [(i - 0.5) * 1.6, R[1]];
     return [R[0], R[1]];
@@ -400,7 +405,24 @@ export class Game {
     });
     finished.forEach((f) => f());
 
-    if (this.state === 'play') {
+    const P = this.pasha;
+    if (P.dead) {
+      P.moving = false;
+      P.respawnT -= dt;
+      if (P.respawnT <= 0) {
+        // back on his feet at the camp
+        P.dead = false;
+        P.hp = PLAYER.hp;
+        P.x = MAP.kazan[0];
+        P.z = MAP.kazan[1] + 3.5;
+        this.fx.sparkle(P.x, 0, P.z, 0xffe9a0, 14);
+        this.snapCam = true;
+      }
+    } else {
+      P.hurtT += dt;
+      if (P.hurtT > 3) P.hp = Math.min(PLAYER.hp, P.hp + PLAYER.regen * dt);
+    }
+    if (this.state === 'play' && !P.dead) {
       this.movePasha(dt);
       this.handlePlayer(dt);
     }
@@ -435,6 +457,11 @@ export class Game {
       P.x += (this.input.x / m) * sp;
       P.z += (this.input.z / m) * sp;
       P.yaw = turn(P.yaw, yawFor(this.input.x, this.input.z), Math.min(1, dt * 14));
+      P.stepD += sp;
+      if (P.stepD > 1.7) {
+        P.stepD = 0;
+        sfx.step();
+      }
     }
     const b = MAP.bounds;
     P.x = clamp(P.x, b.x0, b.x1);
@@ -534,6 +561,19 @@ export class Game {
         P.n--;
         if (!P.n && !P.pending) P.type = null;
         this.serve(s, from);
+      }
+    }
+    // akçe lying on the battlefield
+    if (P.payT <= 0) {
+      const c = this.groundCoins.find((cc) => cc.ready && dist(cc.x, cc.z, P.x, P.z) < 2.3);
+      if (c) {
+        P.payT = 0.04;
+        this.groundCoins.splice(this.groundCoins.indexOf(c), 1);
+        this.fly('coin', V(c.x, 0.2, c.z), () => V(P.x, 1.6, P.z), 0.25, () => {
+          P.gold++;
+          this.hud.coins(P.gold, true);
+          sfx.coin();
+        }, 1.0);
       }
     }
     // collect the akçe pile
@@ -653,6 +693,7 @@ export class Game {
         }
       }
       const speed = d.st === 'flee' ? DEER.run : DEER.walk;
+      if (d.st === 'flee' && d.moving && dist(d.x, d.z, this.pasha.x, this.pasha.z) < 14) sfx.hoof();
       const dx = d.tx - d.x;
       const dz = d.tz - d.z;
       const dd = Math.hypot(dx, dz);
@@ -1020,26 +1061,25 @@ export class Game {
   /* ───────────────────────── battle ───────────────────────── */
 
   get currentOutpost() {
-    return this.outposts[this.cleared];
+    return this.outposts.find((o) => !o.cleared);
   }
 
   canAttack() {
-    return this.state === 'play' && !!this.currentOutpost && this.men.some((s) => s.army && s.kind !== 'top' && (s.st === 'rank' || s.st === 'go' || s.st === 'return'));
+    return this.state === 'play' && !!this.currentOutpost && this.men.some((s) => s.army && s.kind !== 'top' && (s.st === 'rank' || s.st === 'go'));
   }
 
+  // SALDIR: everyone standing in the ranks marches out and fights until the last man
   startBattle() {
     const op = this.currentOutpost;
-    this.state = 'battle';
-    this.stateT = 0;
-    this.battle = { op, t: 0, over: false };
     this.hud.callout(op.def.hq ? TEXT.attackHq : TEXT.attackOn(op.i + 1), 'red');
     sfx.charge();
     sfx.march();
-    for (const s of this.men) if (s.army && (s.st === 'rank' || s.st === 'go' || s.st === 'return')) Object.assign(s, { st: 'fight', walking: false, attacking: false, target: null });
+    this.campaign = true;
+    for (const s of this.men) if (s.army && (s.st === 'rank' || s.st === 'go')) Object.assign(s, { st: 'fight', walking: false, attacking: false, target: null });
   }
 
   // a point to walk to on the way to (tx, tz), going through the gap of the outpost wall
-  waypoint(u, tx, tz, op, outward = false) {
+  waypoint(u, tx, tz, op) {
     const w = op?.def.wall;
     if (!w) return [tx, tz];
     const ourSide = u.z > w.z;
@@ -1064,164 +1104,181 @@ export class Game {
     if (side < 0 && u.z > w.z - 0.9) u.z = w.z - 0.9;
   }
 
+  // enemies that can fight right now (the headquarters garrison waits behind its gate)
+  foesOf(op) {
+    return this.enemies.filter((e) => !e.dead && e.op === op.i && !e.onTower && (!e.inside || this.gateDown(op)));
+  }
+
+  // the battle runs all the time, whether the player is watching or not
   updateBattle(dt) {
-    const B = this.battle;
-    if (!B || this.state !== 'battle') return;
-    B.t += dt;
-    const op = B.op;
+    if (this.state === 'won') return;
+    const P = this.pasha;
     const ours = this.men.filter((s) => s.st === 'fight');
-    const foes = this.enemies.filter((e) => !e.dead && e.op === op.i && !e.onTower && (!e.inside || this.gateDown(op)));
-    const builds = op.buildings.filter((b) => !b.dead);
-    // enemies wake up when we come close
-    for (const e of foes) if (!e.active && ours.some((s) => dist(s.x, s.z, e.x, e.z) < UNITS.enemy.aggro)) e.active = true;
+    const op = this.currentOutpost;
     let clashes = 0;
-    for (const s of ours) {
-      const st = UNITS[s.kind];
-      s.prevZ = s.z;
-      s.shotT -= dt;
-      // pick a target
-      let t = null;
-      let td = 1e9;
-      const ranged = s.kind !== 'jan';
-      if (s.kind === 'top') {
-        const pri = { gate: 0, tower: 1, keep: 2, tent: 3 };
-        for (const b of builds) {
-          const d = dist(s.x, s.z, b.x, b.z) + pri[b.kind] * 6;
-          if (d < td) {
-            td = d;
-            t = b;
+    if (op) {
+      const foes = this.foesOf(op);
+      const builds = op.buildings.filter((b) => !b.dead);
+      for (const s of ours) {
+        const st = UNITS[s.kind];
+        s.prevZ = s.z;
+        s.shotT -= dt;
+        let t = null;
+        let td = 1e9;
+        const ranged = s.kind !== 'jan';
+        if (s.kind === 'top') {
+          const pri = { gate: 0, tower: 1, keep: 2, tent: 3 };
+          for (const b of builds) {
+            const d = dist(s.x, s.z, b.x, b.z) + pri[b.kind] * 6;
+            if (d < td) {
+              td = d;
+              t = b;
+            }
           }
         }
-      }
-      if (!t)
-        for (const e of foes) {
-          const d = dist(s.x, s.z, e.x, e.z);
-          if (d < td) {
-            td = d;
-            t = e;
+        if (!t)
+          for (const e of foes) {
+            const d = dist(s.x, s.z, e.x, e.z);
+            if (d < td) {
+              td = d;
+              t = e;
+            }
+          }
+        if (!t || (ranged && s.kind !== 'top' && td > st.range + 2)) {
+          let bt = null;
+          let bd = 1e9;
+          for (const b of builds) {
+            const d = dist(s.x, s.z, b.x, b.z) + (ranged && b.kind !== 'tower' ? 4 : 0);
+            if (d < bd) {
+              bd = d;
+              bt = b;
+            }
+          }
+          if (!t || (bt && bd < td)) {
+            t = bt;
+            td = bd;
           }
         }
-      if (!t || (ranged && s.kind !== 'top' && td > st.range + 2)) {
-        // buildings (towers first for archers and musketeers)
-        let bt = null;
-        let bd = 1e9;
-        for (const b of builds) {
-          const d = dist(s.x, s.z, b.x, b.z) + (ranged && b.kind !== 'tower' ? 4 : 0);
-          if (d < bd) {
-            bd = d;
-            bt = b;
+        const gate = op.buildings.find((b) => b.kind === 'gate' && !b.dead);
+        if (t && gate && t !== gate && t.z < op.def.wall.z && s.z > op.def.wall.z) t = gate;
+        s.target = t;
+        if (!t) {
+          s.walking = false;
+          s.attacking = false;
+          continue;
+        }
+        // bows and muskets can't hurt a stone gate: they press up to it with the others
+        const reach = t.kind === 'gate' && ranged && s.kind !== 'top' ? 3 + t.r : st.range + (t.r || 0.4);
+        const d = dist(s.x, s.z, t.x, t.z);
+        if (d > reach) {
+          const [wx, wz] = s.kind === 'jan' || d > reach + 3 ? this.waypoint(s, t.x, t.z, op) : [t.x, t.z];
+          const dx = wx - s.x;
+          const dz = wz - s.z;
+          const dd = Math.hypot(dx, dz) || 1;
+          const sp = Math.min(dd, st.speed * dt);
+          s.x += (dx / dd) * sp;
+          s.z += (dz / dd) * sp;
+          s.yaw = turn(s.yaw, yawFor(dx, dz), Math.min(1, dt * 10));
+          s.walking = true;
+          s.attacking = false;
+          s.speed = st.speed;
+          if (s.kind === 'top') this.rollCannonWheels(sp);
+        } else {
+          s.walking = false;
+          s.attacking = true;
+          s.yaw = turn(s.yaw, yawFor(t.x - s.x, t.z - s.z), Math.min(1, dt * 10));
+          if (s.kind === 'jan') {
+            this.damage(t, st.dps * dt, 'melee');
+            clashes++;
+          } else if (s.shotT <= 0) {
+            s.shotT = st.shot;
+            this.rangedShot(s, t, st.dps * st.shot);
           }
         }
-        if (!t || (bt && bd < td)) {
-          t = bt;
-          td = bd;
-        }
+        this.wallClamp(s, op);
       }
-      // behind a closed gate everything is reached through the gate
-      const gate = op.buildings.find((b) => b.kind === 'gate' && !b.dead);
-      if (t && gate && t !== gate && t.z < op.def.wall.z && s.z > op.def.wall.z) {
-        t = gate;
-        td = dist(s.x, s.z, gate.x, gate.z);
-      }
-      s.target = t;
-      if (!t) {
-        s.walking = false;
-        s.attacking = false;
-        continue;
-      }
-      const reach = st.range + (t.r || 0.4);
-      const d = dist(s.x, s.z, t.x, t.z);
-      if (d > reach) {
-        const [wx, wz] = s.kind === 'jan' || d > reach + 3 ? this.waypoint(s, t.x, t.z, op) : [t.x, t.z];
-        const dx = wx - s.x;
-        const dz = wz - s.z;
-        const dd = Math.hypot(dx, dz) || 1;
-        const sp = Math.min(dd, st.speed * dt);
-        s.x += (dx / dd) * sp;
-        s.z += (dz / dd) * sp;
-        s.yaw = turn(s.yaw, yawFor(dx, dz), Math.min(1, dt * 10));
-        s.walking = true;
-        s.attacking = false;
-        s.speed = st.speed;
-        if (s.kind === 'top') this.rollCannonWheels(sp);
-      } else {
-        s.walking = false;
-        s.attacking = true;
-        s.yaw = turn(s.yaw, yawFor(t.x - s.x, t.z - s.z), Math.min(1, dt * 10));
-        if (s.kind === 'jan') {
-          this.damage(t, st.dps * dt, 'melee');
-          clashes++;
-        } else if (s.shotT <= 0) {
-          s.shotT = st.shot;
-          this.rangedShot(s, t, st.dps * st.shot);
-        }
-      }
-      this.wallClamp(s, op);
     }
-    // enemy soldiers fight back
-    for (const e of foes) {
-      e.prevZ = e.z;
-      if (!e.active) continue;
+    // every enemy that is not yet beaten defends itself: against our army and against the cook
+    const playerOk = !P.dead;
+    const targetsFor = (x, z) => {
       let t = null;
       let td = 1e9;
       for (const s of ours) {
         if (s.kind === 'top') continue;
-        const d = dist(e.x, e.z, s.x, s.z);
+        const d = dist(x, z, s.x, s.z);
         if (d < td) {
           td = d;
           t = s;
         }
       }
-      if (!t) {
-        e.walking = false;
-        e.attacking = false;
-        continue;
-      }
-      if (td > UNITS.enemy.range + 0.4) {
-        const [wx, wz] = this.waypoint(e, t.x, t.z, op);
-        const dx = wx - e.x;
-        const dz = wz - e.z;
-        const dd = Math.hypot(dx, dz) || 1;
-        const sp = Math.min(dd, UNITS.enemy.speed * dt);
-        e.x += (dx / dd) * sp;
-        e.z += (dz / dd) * sp;
-        e.yaw = turn(e.yaw, yawFor(dx, dz), Math.min(1, dt * 10));
-        e.walking = true;
-        e.attacking = false;
-      } else {
-        e.walking = false;
-        e.attacking = true;
-        e.yaw = turn(e.yaw, yawFor(t.x - e.x, t.z - e.z), Math.min(1, dt * 10));
-        this.hurt(t, UNITS.enemy.dps * e.power * dt);
-      }
-      this.wallClamp(e, op);
-    }
-    // archer towers
-    for (const b of builds) {
-      if (b.kind !== 'tower') continue;
-      b.shotT -= dt;
-      if (b.shotT > 0) continue;
-      let t = null;
-      let td = 10.5;
-      for (const s of ours) {
-        if (s.kind === 'top' || s.st !== 'fight') continue;
-        const d = dist(b.x, b.z, s.x, s.z);
+      if (playerOk) {
+        const d = dist(x, z, P.x, P.z);
         if (d < td) {
           td = d;
-          t = s;
+          t = P;
         }
       }
-      if (!t) continue;
-      b.shotT = 0.9;
-      if (b.archer && !b.archer.dead) {
-        b.archer.yaw = yawFor(t.x - b.x, t.z - b.z);
-        b.archer.shootAnim = 0.6;
+      return [t, td];
+    };
+    const live = [];
+    for (const o of this.outposts) {
+      if (o.cleared) continue;
+      for (const e of this.foesOf(o)) {
+        e.prevZ = e.z;
+        const [t, td] = targetsFor(e.x, e.z);
+        // the outpost under attack fights with everything; the ones behind only guard their own ground
+        const current = o === op;
+        const aggro = t === P ? UNITS.enemy.aggroPlayer : current ? UNITS.enemy.aggro : 4.5;
+        const leash = current ? 17 : 10;
+        if (!e.active && t && td < aggro) e.active = true;
+        if (e.active && (!t || td > 20 || dist(e.x, e.z, e.home[0], e.home[1]) > leash)) e.active = false;
+        if (!e.active) continue;
+        live.push(e);
+        if (td > UNITS.enemy.range + 0.4) {
+          const [wx, wz] = this.waypoint(e, t.x, t.z, o);
+          const dx = wx - e.x;
+          const dz = wz - e.z;
+          const dd = Math.hypot(dx, dz) || 1;
+          const sp = Math.min(dd, UNITS.enemy.speed * dt);
+          e.x += (dx / dd) * sp;
+          e.z += (dz / dd) * sp;
+          e.yaw = turn(e.yaw, yawFor(dx, dz), Math.min(1, dt * 10));
+          e.walking = true;
+          e.attacking = false;
+        } else {
+          e.walking = false;
+          e.attacking = true;
+          e.yaw = turn(e.yaw, yawFor(t.x - e.x, t.z - e.z), Math.min(1, dt * 10));
+          const dmg = UNITS.enemy.dps * e.power * dt;
+          if (t === P) {
+            this.hurtPlayer(dmg);
+            if (Math.random() < dt * 3) sfx.sword();
+          } else this.hurt(t, dmg);
+        }
+        this.wallClamp(e, o);
       }
-      sfx.arrow();
-      this.fx.arrows.shoot(V(b.x, b.topY + 1.3, b.z), V(t.x, 1.2, t.z), 0.45, 0.6, () => t.st === 'fight' && this.hurt(t, b.dps * 0.9));
+      // archer towers shoot whoever comes in range
+      for (const b of o.buildings) {
+        if (b.dead || b.kind !== 'tower') continue;
+        b.shotT -= dt;
+        if (b.shotT > 0) continue;
+        const [t, td] = targetsFor(b.x, b.z);
+        if (!t || td > b.range) continue;
+        b.shotT = 0.9;
+        if (b.archer && !b.archer.dead) {
+          b.archer.yaw = yawFor(t.x - b.x, t.z - b.z);
+          b.archer.shootAnim = 0.6;
+        }
+        if (dist(b.x, b.z, P.x, P.z) < 22) sfx.arrow();
+        this.fx.arrows.shoot(V(b.x, b.topY + 1.3, b.z), V(t.x, 1.2, t.z), 0.45, 0.6, () => {
+          if (t === P) {
+            if (!P.dead && dist(P.x, P.z, t.x, t.z) < 2.5) this.hurtPlayer(b.dps * 0.9);
+          } else if (t.st === 'fight') this.hurt(t, b.dps * 0.9);
+        });
+      }
     }
     // separation
-    const all = [...ours, ...foes.filter((e) => e.active)];
+    const all = [...ours, ...live];
     for (let i = 0; i < all.length; i++)
       for (let j = i + 1; j < all.length; j++) {
         const a = all[i];
@@ -1238,22 +1295,79 @@ export class Game {
           b.z += (dz / d) * push;
         }
       }
-    if (clashes && Math.random() < dt * Math.min(8, clashes * 1.5)) {
+    if (clashes && Math.random() < dt * Math.min(6, clashes * 1.2)) {
       const s = ours.filter((o) => o.attacking && o.kind === 'jan')[Math.floor(Math.random() * clashes)];
-      if (s) this.fx.clash(s.x - Math.sin(s.yaw) * 0.7, 1.4, s.z - Math.cos(s.yaw) * 0.7);
-      sfx.clash();
+      if (s) {
+        this.fx.clash(s.x - Math.sin(s.yaw) * 0.7, 1.4, s.z - Math.cos(s.yaw) * 0.7);
+        if (dist(s.x, s.z, P.x, P.z) < 24) sfx.sword();
+      }
     }
-    // outcome
-    if (B.over) return;
-    const enemiesLeft = this.enemies.some((e) => !e.dead && e.op === op.i && !e.onTower);
-    const buildingsLeft = op.buildings.some((b) => !b.dead);
-    const oursLeft = ours.some((s) => s.kind !== 'top');
-    // a stone gate without a cannon: the army gives up quickly
-    const gate = op.buildings.find((b) => b.kind === 'gate' && !b.dead);
-    const noCannon = !ours.some((s) => s.kind === 'top');
-    if (!enemiesLeft && !buildingsLeft) this.endBattle(true);
-    else if (gate && noCannon && B.t > 12) this.endBattle(false, TEXT.needCannon);
-    else if (!oursLeft || B.t > 50) this.endBattle(false);
+    // an outpost with no soldiers and no buildings left is ours
+    if (op && !this.enemies.some((e) => !e.dead && e.op === op.i && !e.onTower) && !op.buildings.some((b) => !b.dead)) this.clearOutpost(op);
+    // the army is gone: build a new one
+    if (this.campaign && !ours.some((s) => s.kind !== 'top')) {
+      this.campaign = false;
+      this.hud.callout(TEXT.armyLost, 'red small');
+      sfx.defeat();
+      if (this.cannonMan && this.cannonMan.st === 'fight') this.cannonMan.st = 'go';
+      this.saidFull = false;
+    }
+    this.regenerate(dt);
+  }
+
+  clearOutpost(op) {
+    op.cleared = true;
+    this.cleared++;
+    if (op.def.hq) return this.finale();
+    this.hud.callout(TEXT.victoryOutpost, 'gold');
+    sfx.victory();
+    for (const s of this.men) if (s.st === 'fight') s.cheer = 1.0;
+  }
+
+  // the enemy rebuilds what we broke and sends fresh soldiers out of its tents
+  regenerate(dt) {
+    const P = this.pasha;
+    const someoneNear = (x, z, r) => (!P.dead && dist(P.x, P.z, x, z) < r - 2) || this.men.some((s) => s.st === 'fight' && dist(s.x, s.z, x, z) < r);
+    for (const op of this.outposts) {
+      if (op.cleared) continue;
+      // soldiers
+      op.regenT = (op.regenT ?? REGEN.soldier) - dt;
+      if (op.regenT <= 0) {
+        op.regenT = REGEN.soldier;
+        const dead = this.enemies.find((e) => e.dead && e.gone && e.op === op.i && !e.onTower && !e.respawned);
+        const tents = op.buildings.filter((b) => !b.dead && (b.kind === 'tent' || b.kind === 'keep'));
+        if (dead && tents.length) {
+          const from = tents[Math.floor(Math.random() * tents.length)];
+          if (!someoneNear(from.x, from.z, 9)) {
+            dead.respawned = true;
+            const e = this.newEnemy(from.x, from.z + 1.2, op.i, { inside: dead.inside });
+            e.home = dead.home;
+            this.fx.poof(e.x, 0, e.z, C.enemyCoat);
+          }
+        }
+      }
+      // buildings
+      for (const b of op.buildings) {
+        if (!b.dead || b.kind === 'keep') continue;
+        b.deadT = (b.deadT || 0) + dt;
+        if (b.deadT < REGEN.building || someoneNear(b.x, b.z, 10)) continue;
+        this.rebuild(b);
+      }
+    }
+  }
+
+  rebuild(b) {
+    b.dead = false;
+    b.deadT = 0;
+    b.hp = b.max;
+    const o = b.obj;
+    o.visible = true;
+    o.rotation.x = b.home.rx;
+    o.rotation.z = b.home.rz;
+    o.position.y = b.home.y;
+    this.tween(0.6, (k) => (o.scale.y = b.home.sy * Math.max(0.02, easeOutBack(k))));
+    this.fx.bigDust(b.x, 0.3, b.z, 8, 1.6, 0xbcae94);
+    if (b.kind === 'tower') b.archer = this.newEnemy(b.x, b.z, b.op, { onTower: b, y: b.topY });
   }
 
   gateDown(op) {
@@ -1262,13 +1376,15 @@ export class Game {
   }
 
   rangedShot(s, t, dmg) {
+    const P = this.pasha;
+    const heard = dist(s.x, s.z, P.x, P.z) < 26;
     const from = V(s.x - Math.sin(s.yaw) * 0.6, s.kind === 'top' ? 1.4 : 1.5, s.z - Math.cos(s.yaw) * 0.6);
     const to = V(t.x, t.kind ? 1.6 : 1.1, t.z);
     if (s.kind === 'azap') {
-      sfx.arrow();
+      if (heard) sfx.arrow();
       this.fx.arrows.shoot(from, to, 0.45, 1.0, () => this.damage(t, dmg, 'arrow'));
     } else if (s.kind === 'tuf') {
-      sfx.boom(false);
+      if (heard) sfx.musket();
       this.fx.glow.emit(from.x, from.y, from.z, { color: 0xffd28a, size: 1.2, life: 0.1, grow: 2 });
       this.fx.smoke.emit(from.x, from.y, from.z, { vy: 0.8, color: 0xe8e2d6, size: 1.0, life: 0.8, grow: 2, alpha: 0.6 });
       this.later(0.12, () => this.damage(t, dmg, 'shot'));
@@ -1280,13 +1396,14 @@ export class Game {
       this.fx.glow.emit(muzzle.x, muzzle.y, muzzle.z, { color: 0xffd28a, size: 3, life: 0.2, grow: 2.5 });
       for (let i = 0; i < 8; i++)
         this.fx.smoke.emit(muzzle.x, muzzle.y, muzzle.z, { vx: rnd(-1.5, 1.5) - Math.sin(s.yaw) * 4, vy: rnd(0.5, 2), vz: rnd(-1.5, 1.5) - Math.cos(s.yaw) * 4, color: 0xd8d2c6, size: rnd(1, 1.6), life: rnd(0.8, 1.3), grow: 2, alpha: 0.5 });
-      sfx.boom(true);
-      this.shake = Math.max(this.shake, 0.35);
+      if (heard) {
+        sfx.cannon();
+        this.shake = Math.max(this.shake, 0.3);
+      }
       this.fx.balls.shoot(muzzle, to, 0.7, 2.5, () => {
         this.fx.glow.emit(to.x, to.y, to.z, { color: 0xffb060, size: 4, life: 0.25, grow: 2 });
         this.fx.bigDust(to.x, 0.6, to.z, 10, 1.6, 0xbcae94);
         this.damage(t, dmg, 'cannon');
-        // splash on soldiers around
         for (const e of this.enemies) if (!e.dead && e !== t && !e.onTower && dist(e.x, e.z, to.x, to.z) < UNITS.top.splash) this.damage(e, dmg * 0.5, 'cannon');
       });
     }
@@ -1296,7 +1413,8 @@ export class Game {
     if (t.dead) return;
     if (t.kind) {
       // a building: soft walls shrug off anything but the cannon
-      const mult = how === 'cannon' ? 1 : how === 'melee' ? t.soft : t.soft * 0.6;
+      // (arrows and musket balls do nothing to a stone gate)
+      const mult = how === 'cannon' ? 1 : how === 'melee' ? t.soft : t.kind === 'gate' ? 0 : t.soft * 0.6;
       t.hp -= amount * mult;
       if (Math.random() < 0.3) this.fx.debris.emit(t.x + rnd(-0.6, 0.6), rnd(0.5, 2), t.z + rnd(0, 1), { vx: rnd(-2, 2), vy: rnd(2, 4), vz: rnd(0, 3), color: t.kind === 'tent' ? 0xc8c0b0 : 0x8a7a64, sx: 0.2, sy: 0.2, sz: 0.2, life: 1 });
       if (t.hp <= 0) this.destroy(t);
@@ -1308,6 +1426,18 @@ export class Game {
       t.dead = true;
       t.dieT = 0;
       sfx.poof();
+      this.dropCoins(t.x, t.z, LOOT.soldier);
+    }
+  }
+
+  // akçe scattered on the ground where an enemy fell or a building came down
+  dropCoins(x, z, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rnd(0, Math.PI * 2);
+      const r = rnd(0.3, 1.2);
+      const c = { x: x + Math.cos(a) * r, z: z + Math.sin(a) * r, t: -i * 0.08, ready: false };
+      this.groundCoins.push(c);
+      this.later(0.5 + i * 0.08, () => (c.ready = true));
     }
   }
 
@@ -1323,10 +1453,30 @@ export class Game {
     }
   }
 
+  hurtPlayer(amount) {
+    const P = this.pasha;
+    if (P.dead || this.state !== 'play') return;
+    P.hp -= amount;
+    P.hurtT = 0;
+    P.flash = 0.3;
+    if (P.hp > 0) return;
+    // the cook falls: everything he carried is lost, he wakes up back at the camp
+    P.dead = true;
+    P.respawnT = PLAYER.respawn;
+    P.n = 0;
+    P.pending = 0;
+    P.type = null;
+    this.fx.poof(P.x, 0, P.z, 0xf3ead6);
+    this.hud.callout(TEXT.playerDown, 'red small');
+    sfx.defeat();
+  }
+
   destroy(b) {
     b.dead = true;
+    b.deadT = 0;
     sfx.collapse();
-    this.shake = Math.max(this.shake, b.kind === 'keep' ? 0.9 : 0.4);
+    this.dropCoins(b.x, b.z + 1.2, LOOT[b.kind] || 2);
+    if (dist(b.x, b.z, this.pasha.x, this.pasha.z) < 25) this.shake = Math.max(this.shake, b.kind === 'keep' ? 0.9 : 0.4);
     this.fx.bigDust(b.x, 1, b.z, b.kind === 'tent' ? 10 : 22, b.kind === 'tent' ? 1.6 : 3, 0xbcae94);
     for (let i = 0; i < (b.kind === 'tent' ? 6 : 18); i++)
       this.fx.debris.emit(b.x + rnd(-1, 1), rnd(1, 4), b.z + rnd(-1, 1), { vx: rnd(-5, 5), vy: rnd(3, 9), vz: rnd(-3, 5), color: b.kind === 'tent' ? 0xd8d0c0 : i % 2 ? 0x8a6a40 : 0xb2a690, sx: rnd(0.2, 0.5), sy: rnd(0.15, 0.4), sz: rnd(0.2, 0.5), life: 2 });
@@ -1358,7 +1508,7 @@ export class Game {
         o.rotation.z = b.home.rz + tip * k * k * 1.35;
         o.position.y = b.home.y - k * k * (b.kind === 'gate' ? 4.5 : 1.2);
       }
-    }, () => (o.visible = false));
+    }, () => b.dead && (o.visible = false));
   }
 
   updateEnemies(dt) {
@@ -1373,9 +1523,8 @@ export class Game {
         e.shootAnim = Math.max(0, (e.shootAnim || 0) - dt);
         continue;
       }
-      // between battles the survivors go back to their posts
-      if (!this.battle || this.battle.op.i !== e.op || this.state !== 'battle') {
-        e.active = false;
+      // idle soldiers go back to their posts
+      if (!e.active) {
         e.attacking = false;
         const [hx, hz] = e.home;
         const d = dist(e.x, e.z, hx, hz);
@@ -1407,47 +1556,6 @@ export class Game {
           if (p.m.position.y < -3) p.m.visible = false;
         }
       }
-  }
-
-  endBattle(win, why) {
-    const B = this.battle;
-    B.over = true;
-    const op = B.op;
-    if (win) {
-      op.cleared = true;
-      this.cleared++;
-      if (op.def.hq) return this.finale();
-      this.hud.callout(TEXT.victoryOutpost, 'gold');
-      sfx.victory();
-      for (const s of this.men) if (s.st === 'fight') s.cheer = 1.4;
-      // loot: akçe for the pile beside the table
-      const loot = op.def.loot || 0;
-      this.later(1.0, () => {
-        this.hud.callout(TEXT.loot(loot), 'gold small');
-        for (let i = 0; i < loot; i++) {
-          const slot = this.coins + this.coinsIn;
-          this.coinsIn++;
-          this.later(i * 0.06, () =>
-            this.fly('coin', V(MAP.coinZone[0] + rnd(-3, 3), 6, MAP.coinZone[1] - 4), () => this.coinSlot(slot), 0.5, () => {
-              this.coinsIn--;
-              this.coins++;
-              sfx.coin();
-            }, 1),
-          );
-        }
-      });
-    } else {
-      this.hud.callout(why || TEXT.defeat, 'red small');
-      sfx.defeat();
-    }
-    this.later(win ? 1.6 : 0.8, () => {
-      for (const s of this.men) if (s.st === 'fight') s.st = 'return';
-      if (this.cannonMan && this.cannonMan.st === 'fight') this.cannonMan.st = 'return';
-      this.state = 'play';
-      this.stateT = 0;
-      this.battle = null;
-      this.saidFull = false;
-    });
   }
 
   finale() {
@@ -1485,8 +1593,8 @@ export class Game {
   /* ───────────────────────── guidance ───────────────────────── */
 
   objective() {
-    if (this.state !== 'play') return null;
     const P = this.pasha;
+    if (this.state !== 'play' || P.dead) return null;
     const hungry = this.unservedSeated();
     if (P.type === 'bowl' && P.n + P.pending > 0 && !this.anyoneHungry()) return { tip: 'bowls', x: MAP.foodZone[0], z: MAP.foodZone[1] };
     if (P.type === 'bowl' && P.n + P.pending > 0) {
@@ -1506,6 +1614,9 @@ export class Game {
     const hqWait = this.currentOutpost?.def.hq && !this.cannonMan && this.nextUpgrade < UPGRADES.length;
     if (this.armyFull && this.currentOutpost && P.n === 0 && this.coins < 4 && !hqWait) return { tip: 'attack', x: MAP.attackPad[0], z: MAP.attackPad[1] };
     if (this.coins >= 6 && P.n === 0) return { tip: 'coins', x: MAP.coinZone[0], z: MAP.coinZone[1] };
+    // akçe left on the battlefield (only once the fighting there has moved on, or close by)
+    const loot = this.groundCoins.filter((c) => c.ready).sort((a, b) => dist(a.x, a.z, P.x, P.z) - dist(b.x, b.z, P.x, P.z))[0];
+    if (loot && P.n === 0 && P.hp > PLAYER.hp * 0.5 && !this.dangerAt(loot.x, loot.z)) return { tip: 'loot', x: loot.x, z: loot.z };
     if (meatNeed > 0 && !(this.workers.avci && P.type !== 'meat')) {
       const m = this.meats.filter((mm) => mm.ready).sort((a, b) => dist(a.x, a.z, P.x, P.z) - dist(b.x, b.z, P.x, P.z))[0];
       if (m) return { tip: 'hunt', x: m.x, z: m.z };
@@ -1516,6 +1627,13 @@ export class Game {
     if (this.coins > 0) return { tip: 'coins', x: MAP.coinZone[0], z: MAP.coinZone[1] };
     if (this.currentOutpost && this.men.some((s) => s.army && s.kind !== 'top')) return { tip: 'attack', x: MAP.attackPad[0], z: MAP.attackPad[1] };
     return null;
+  }
+
+  // is an active enemy soldier or a standing tower close to (x, z)?
+  dangerAt(x, z) {
+    for (const e of this.enemies) if (!e.dead && !e.onTower && (e.active || !e.inside) && dist(e.x, e.z, x, z) < 6) return true;
+    for (const op of this.outposts) if (!op.cleared) for (const b of op.buildings) if (!b.dead && b.kind === 'tower' && dist(b.x, b.z, x, z) < 10) return true;
+    return false;
   }
 
   updateGuide() {
@@ -1532,7 +1650,8 @@ export class Game {
     const P = this.pasha;
     const won = this.state === 'won';
     B.cook.begin();
-    if (this.cookUnit) this.cookUnit.update(0, P.x, 0, P.z, P.yaw, P.moving && this.state === 'play' ? (P.n ? 'Carry' : 'Walk') : 'Idle', dt, { speed: P.moving ? 1.9 : 1 });
+    if (this.cookUnit && P.dead) this.cookUnit.hide(0);
+    else if (this.cookUnit) this.cookUnit.update(0, P.x, 0, P.z, P.yaw, P.moving && this.state === 'play' ? (P.n ? 'Carry' : 'Walk') : 'Idle', dt, { speed: P.moving ? 1.9 : 1 });
     else B.cook.push(P.x, 0, P.z, P.yaw, (P.ph = (P.ph || 0) + dt * 11), P.moving ? (P.n ? 6 : 0) : 2);
     const G = this.workers.garson;
     if (G) B.cook.push(G.x, 0, G.z, G.yaw, G.ph || 0, G.moving ? (G.n ? 6 : 0) : 2, 0.95);
@@ -1602,6 +1721,11 @@ export class Game {
     for (let i = 0; i < this.coins; i++) {
       const p = this.coinSlot(i);
       I.put('coin', p.x, p.y, p.z, i * 0.7);
+    }
+    for (const c of this.groundCoins) {
+      c.t += dt;
+      const k = Math.min(1, Math.max(0, c.t) * 3);
+      I.put('coin', c.x, 0.12 + Math.abs(Math.sin(c.t * 3 + c.x)) * 0.1, c.z, this.time * 3 + c.x, easeOutBack(k) * 1.3, Math.PI / 2);
     }
     for (const m of this.meats) {
       const s = Math.min(1, m.t * 4);
@@ -1687,7 +1811,9 @@ export class Game {
     const playing = this.state === 'play';
     this.hud.quest(this.state === 'won' ? null : this.questInfo());
     const tp = this.project(P.x, 1.0 + P.n * 0.3 + 0.9, P.z);
-    this.hud.stackCount(playing ? P.n : 0, PLAYER.stackMax, tp.x, tp.y);
+    this.hud.stackCount(playing && !P.dead ? P.n : 0, PLAYER.stackMax, tp.x, tp.y);
+    const hp = this.project(P.x, 2.9, P.z);
+    this.hud.playerHp(playing && !P.dead && P.hp < PLAYER.hp - 0.05, P.hp / PLAYER.hp, hp.x, hp.y);
     if (playing && !this.moved) {
       const a = this.project(P.x, 0.2, P.z);
       const d = this.deer[0];

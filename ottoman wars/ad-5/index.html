@@ -244,6 +244,11 @@
       @keyframes firePulse { 0%, 100% { box-shadow: 0 6px 0 #5a0808, 0 12px 24px rgba(0,0,0,.45), 0 0 0 6px rgba(255,90,60,.35); } 50% { box-shadow: 0 6px 0 #5a0808, 0 12px 24px rgba(0,0,0,.45), 0 0 0 16px rgba(255,90,60,0); } }
       .qicon.bowl { border-radius: 0 0 20px 20px; height: 22px; margin-top: 8px; background: linear-gradient(#e08a3a, #a0521e); border-top: 6px solid #c8742e; box-shadow: 0 -3px 0 #ffd08a; }
 
+      /* the cook's health */
+      .php { position: absolute; left: 0; top: 0; width: 64px; height: 10px; border-radius: 6px; background: rgba(20,10,4,.85); border: 2px solid #fff; overflow: hidden; display: none; }
+      .php i { display: block; height: 100%; width: 100%; background: linear-gradient(#9cf07a, #3aa82a); }
+      .php i.low { background: linear-gradient(#ff8a7a, #c8202a); }
+
       /* army strip */
       .army { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 10px); top: calc(env(safe-area-inset-top, 0px) + 132px); display: none; flex-direction: column; gap: 4px; pointer-events: none; }
       .army.show { display: flex; }
