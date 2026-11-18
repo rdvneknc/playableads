@@ -457,11 +457,6 @@ export class Game {
       P.x += (this.input.x / m) * sp;
       P.z += (this.input.z / m) * sp;
       P.yaw = turn(P.yaw, yawFor(this.input.x, this.input.z), Math.min(1, dt * 14));
-      P.stepD += sp;
-      if (P.stepD > 1.7) {
-        P.stepD = 0;
-        sfx.step();
-      }
     }
     const b = MAP.bounds;
     P.x = clamp(P.x, b.x0, b.x1);
