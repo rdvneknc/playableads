@@ -1,0 +1,17 @@
+{
+  "name": "bloop-grove-ad-01",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bloop Grove — 3D match-3 playable ad",
+  "scripts": {
+    "dev": "vite",
+    "dev:mobile": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
