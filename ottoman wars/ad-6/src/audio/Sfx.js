@@ -1,7 +1,6 @@
 // Sound effects: the artist's recorded samples (inlined mp3) plus synthesised drums & horns (mehter).
 // Starts on the first touch.
 import tufekUrl from '../assets/sfx/tufek.mp3';
-import kilicUrl from '../assets/sfx/kilic.mp3';
 import okUrl from '../assets/sfx/ok.mp3';
 import topUrl from '../assets/sfx/top.mp3';
 import arrowUrl from '../assets/sfx/arrow-shot.mp3';
@@ -9,7 +8,7 @@ import stoneUrl from '../assets/sfx/stone-impact.mp3';
 import collapseUrl from '../assets/sfx/building-collapse.mp3';
 import goldUrl from '../assets/sfx/gold-collect.mp3';
 
-const SAMPLES = { tufek: tufekUrl, kilic: kilicUrl, ok: okUrl, top: topUrl, arrow: arrowUrl, stone: stoneUrl, collapse: collapseUrl, gold: goldUrl };
+const SAMPLES = { tufek: tufekUrl, ok: okUrl, top: topUrl, arrow: arrowUrl, stone: stoneUrl, collapse: collapseUrl, gold: goldUrl };
 
 function dataUrlToBuffer(url) {
   const bin = atob(url.slice(url.indexOf(',') + 1));
@@ -60,10 +59,8 @@ class Sfx {
     return this.sample(this.flip[a] ? a : b, opts);
   }
 
-  sword() {
-    if (!this.gate('sword', 110)) return;
-    if (!this.sample('kilic', { gain: 0.42 })) this.clash();
-  }
+  // no sword sound in this ad
+  sword() {}
 
   musket() {
     if (!this.gate('musket', 90)) return;
